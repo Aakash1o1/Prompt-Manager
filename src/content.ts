@@ -1,4 +1,8 @@
 // src/content.ts
+// Content script (Shadow DOM) for Prompt Manager
+// Features: prompt CRUD, drag reorder (FLIP), search, settings, resizable from any edge/corner,
+// tolerant hide (10px), storage sync, and toolbar message handling.
+
 import { getStorage, setStorage } from './lib/storage';
 
 type Prompt = { id: string; title: string; text: string; quick?: string };
@@ -33,6 +37,7 @@ const DEFAULT_SETTINGS: Settings = {
 
 function uid() { return Math.random().toString(36).slice(2, 9); }
 
+/* --- create/get host + shadow DOM --- */
 function createOrGetHost() {
   let host = document.getElementById(HOST_ID) as HTMLElement | null;
   if (host && host.shadowRoot) return { host, shadow: host.shadowRoot as ShadowRoot };
@@ -60,7 +65,7 @@ function createOrGetHost() {
       .ctrl-btn { background: transparent; border: 1px solid rgba(255,255,255,0.06); border-radius:8px; padding:6px 8px; color:var(--txt); cursor:pointer; }
       .list { flex:1; overflow-y:auto; padding:6px; margin-top:6px; }
       .row { display:flex; align-items:center; gap:8px; padding:8px; border-radius:8px; background: rgba(255,255,255,0.02); margin-bottom:8px; min-height:34px; transition: transform 160ms ease, opacity 120ms ease; }
-      .row.heading-row { min-height:26px; } /* decreased heading height */
+      .row.heading-row { min-height:26px; }
       .dragging { opacity:0.55; transform: scale(0.98); }
       .left { display:flex; align-items:center; gap:8px; flex:1; min-width:0; }
       .drag-handle { width:20px; height:20px; display:flex; align-items:center; justify-content:center; border-radius:6px; background: rgba(255,255,255,0.03); cursor:grab; }
@@ -78,6 +83,8 @@ function createOrGetHost() {
       .settings-row label { width:140px; color:var(--txt); font-size:13px; }
       .toast { position:absolute; left:50%; transform:translateX(-50%); bottom:12px; background: rgba(0,0,0,0.65); color:#fff; padding:8px 12px; border-radius:8px; font-size:13px; opacity:0; transition:opacity .18s; }
       .toast.show { opacity:1; }
+      /* resize handles (hit-targets) */
+      .resize-handle { position: absolute; background: transparent; z-index:2147483652; }
     </style>
 
     <div class="hotzone" id="hotzone" title="Open Prompt Drawer">💬</div>
@@ -129,7 +136,7 @@ function createOrGetHost() {
   return { host, shadow };
 }
 
-/* FLIP helpers */
+/* --- FLIP helpers --- */
 function getRectsMap(shadow: ShadowRoot) {
   const map = new Map<string, DOMRect>();
   shadow.querySelectorAll<HTMLElement>('.row').forEach((el) => {
@@ -167,6 +174,7 @@ function applySettingsToHost(host: HTMLElement, s: Settings) {
   host.setAttribute('data-theme', s.theme);
 }
 
+/* --- render UI + behavior --- */
 async function renderUI(host: HTMLElement, shadow: ShadowRoot) {
   const hotzone = shadow.getElementById('hotzone') as HTMLElement;
   const panel = shadow.getElementById('panel') as HTMLElement;
@@ -184,7 +192,6 @@ async function renderUI(host: HTMLElement, shadow: ShadowRoot) {
   const toastEl = shadow.getElementById('toast') as HTMLElement;
   const searchInput = shadow.getElementById('search-input') as HTMLInputElement;
 
-  // settings inputs
   const sPopupH = shadow.getElementById('s-popup-height') as HTMLInputElement;
   const sPopupW = shadow.getElementById('s-popup-width') as HTMLInputElement;
   const sFont = shadow.getElementById('s-font-family') as HTMLInputElement;
@@ -320,7 +327,37 @@ async function renderUI(host: HTMLElement, shadow: ShadowRoot) {
 
   /* events */
   hotzone.addEventListener('mouseenter', () => showPanel());
-  panel.addEventListener('mouseleave', () => { if (!isAddingOrEditing) panel.classList.remove('open'); });
+
+  // --- tolerant hide: 10px around popup ---
+  let lastMouse = { x: 0, y: 0 };
+  document.addEventListener('mousemove', (ev) => { lastMouse.x = ev.clientX; lastMouse.y = ev.clientY; }, { passive: true });
+  const CLOSE_TOLERANCE_PX = 10;
+  let pendingHideTimer: number | null = null;
+
+  panel.addEventListener('mouseleave', () => {
+    if (pendingHideTimer) window.clearTimeout(pendingHideTimer);
+    pendingHideTimer = window.setTimeout(() => {
+      const rect = panel.getBoundingClientRect();
+      if (isPointInsideExtendedRect(lastMouse.x, lastMouse.y, rect, CLOSE_TOLERANCE_PX)) {
+        pendingHideTimer = null;
+        return;
+      }
+      if (!isAddingOrEditing) panel.classList.remove('open');
+      pendingHideTimer = null;
+    }, 120);
+  });
+  panel.addEventListener('mouseenter', () => { if (pendingHideTimer) { window.clearTimeout(pendingHideTimer); pendingHideTimer = null; } });
+
+  function isPointInsideExtendedRect(x: number, y: number, rect: DOMRect, tol: number) {
+    return x >= (rect.left - tol) && x <= (rect.right + tol) && y >= (rect.top - tol) && y <= (rect.bottom + tol);
+  }
+
+  // stop propagation so page-level handlers don't swallow clicks
+  [addArea, settingsArea, panel].forEach((el) => {
+    el?.addEventListener('click', (ev) => ev.stopPropagation());
+    el?.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+  });
+
   addBtn.addEventListener('click', () => { showAddArea(); settingsArea.classList.remove('open'); });
   closeBtn.addEventListener('click', () => panel.classList.remove('open'));
   cancelBtn.addEventListener('click', () => hideAddArea());
@@ -362,7 +399,6 @@ async function renderUI(host: HTMLElement, shadow: ShadowRoot) {
       const origin = msg.source || '';
       if (!panel.classList.contains('open')) {
         showPanel();
-        // small delay so element is visible then focus
         setTimeout(() => searchInput?.focus(), 60);
       } else {
         hidePanel();
@@ -370,25 +406,141 @@ async function renderUI(host: HTMLElement, shadow: ShadowRoot) {
     }
   });
 
-  // If the user resizes the panel (resize:both), save new size on mouseup
+  // persist size when user resizes via native resize (mouseup) — keep existing behavior too
   panel.addEventListener('mouseup', async () => {
-    // read px width and convert height px -> vh
     const w = panel.offsetWidth;
     const hPx = panel.offsetHeight;
     const vh = Math.round((hPx / window.innerHeight) * 100);
     settings.popupWidthPx = w;
     settings.popupHeightVh = vh;
     applySettingsToHost(host, settings);
-    await setStorage({ [SETTINGS_KEY]: settings });
+    try { await setStorage({ [SETTINGS_KEY]: settings }); } catch {}
   });
 
   // search filtering live
   searchInput.addEventListener('input', () => buildList());
 
-  // initial focus behavior if panel is opened by hover
-  searchInput.addEventListener('keydown', (ev) => {
-    // allow keyboard navigation later (arrow up/down), for MVP we just let typing
+  // storage.onChanged -> keep UI in sync across tabs
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'sync') return;
+    if (changes[PROMPTS_KEY]) {
+      prompts = changes[PROMPTS_KEY].newValue ?? [];
+      buildList();
+    }
+    if (changes[SETTINGS_KEY]) {
+      settings = changes[SETTINGS_KEY].newValue ?? settings;
+      applySettingsToHost(host, settings);
+    }
   });
+
+  // --- RESIZE: allow pulling any edge or corner ---
+  let isResizing = false;
+  let resizeDir: string | null = null;
+  let resizeStart = { x: 0, y: 0, w: 0, h: 0 };
+
+  function getCursorForDir(d: string) {
+    switch (d) {
+      case 'left': case 'right': return 'ew-resize';
+      case 'top': case 'bottom': return 'ns-resize';
+      case 'top-left': case 'bottom-right': return 'nwse-resize';
+      case 'top-right': case 'bottom-left': return 'nesw-resize';
+      default: return 'move';
+    }
+  }
+
+  function ensureResizeHandles() {
+    const dirs = ['left','right','top','bottom','top-left','top-right','bottom-left','bottom-right'];
+    for (const d of dirs) {
+      let el = shadow.querySelector<HTMLElement>(`.resize-${d}`);
+      if (!el) {
+        el = document.createElement('div');
+        el.className = `resize-handle resize-${d}`;
+        // basic styles; we'll position precisely later
+        Object.assign(el.style, {
+          position: 'absolute',
+          zIndex: '2147483652',
+          background: 'transparent',
+          width: '12px',
+          height: '12px',
+          cursor: getCursorForDir(d)
+        } as any);
+        panel.appendChild(el);
+      }
+    }
+
+    const setPositions = () => {
+      const size = 12;
+      const half = size / 2;
+      const mapping: Record<string, Partial<CSSStyleDeclaration>> = {
+        'resize-left': { left: `-${half}px`, top: '0', height: '100%', width: `${size}px` },
+        'resize-right': { right: `-${half}px`, top: '0', height: '100%', width: `${size}px` },
+        'resize-top': { top: `-${half}px`, left: '0', width: '100%', height: `${size}px` },
+        'resize-bottom': { bottom: `-${half}px`, left: '0', width: '100%', height: `${size}px` },
+        'resize-top-left': { left: `-${half}px`, top: `-${half}px`, width: `${size}px`, height: `${size}px` },
+        'resize-top-right': { right: `-${half}px`, top: `-${half}px`, width: `${size}px`, height: `${size}px` },
+        'resize-bottom-left': { left: `-${half}px`, bottom: `-${half}px`, width: `${size}px`, height: `${size}px` },
+        'resize-bottom-right': { right: `-${half}px`, bottom: `-${half}px`, width: `${size}px`, height: `${size}px` },
+      };
+      Object.entries(mapping).forEach(([cls, styleObj]) => {
+        const el = panel.querySelector<HTMLElement>(`.${cls}`);
+        if (!el) return;
+        Object.assign(el.style, styleObj as any);
+      });
+    };
+
+    // pointerdown handlers
+    panel.querySelectorAll<HTMLElement>('.resize-handle').forEach((el) => {
+      el.addEventListener('pointerdown', (ev) => {
+        ev.stopPropagation();
+        (ev.target as HTMLElement).setPointerCapture?.((ev as PointerEvent).pointerId);
+        startResize((ev as PointerEvent).clientX, (ev as PointerEvent).clientY, (el.className || '').replace('resize-handle','').trim());
+      });
+    });
+
+    // set positions next tick
+    setTimeout(setPositions, 0);
+  }
+
+  function startResize(mouseX: number, mouseY: number, cls: string) {
+    isResizing = true;
+    resizeDir = cls.replace('resize-','');
+    const rect = panel.getBoundingClientRect();
+    resizeStart = { x: mouseX, y: mouseY, w: rect.width, h: rect.height };
+    document.documentElement.style.userSelect = 'none';
+  }
+
+  document.addEventListener('pointermove', (ev) => {
+    if (!isResizing || !resizeDir) return;
+    ev.preventDefault();
+    const dx = ev.clientX - resizeStart.x;
+    const dy = ev.clientY - resizeStart.y;
+    let newW = resizeStart.w;
+    let newH = resizeStart.h;
+
+    if (resizeDir.includes('right')) newW = Math.max(200, resizeStart.w + dx);
+    if (resizeDir.includes('left'))  newW = Math.max(200, resizeStart.w - dx);
+    if (resizeDir.includes('bottom')) newH = Math.max(120, resizeStart.h + dy);
+    if (resizeDir.includes('top'))    newH = Math.max(120, resizeStart.h - dy);
+
+    panel.style.width = `${newW}px`;
+    panel.style.height = `${newH}px`;
+  });
+
+  document.addEventListener('pointerup', async () => {
+    if (!isResizing) return;
+    isResizing = false;
+    resizeDir = null;
+    document.documentElement.style.userSelect = '';
+    // persist new size to settings (convert height px -> vh)
+    settings.popupWidthPx = panel.offsetWidth;
+    const vh = Math.round((panel.offsetHeight / window.innerHeight) * 100);
+    settings.popupHeightVh = vh;
+    applySettingsToHost(host, settings);
+    try { await setStorage({ [SETTINGS_KEY]: settings }); } catch {}
+  });
+
+  // ensure handles exist
+  ensureResizeHandles();
 }
 
 /* initialization */

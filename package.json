@@ -8,11 +8,12 @@
     "typescript": "^5.0.0"
   },
   "scripts": {
-    "build:all": "npm run build:content && npm run build:background",
+    "build:all": "npm run build:content && npm run build:background && npm run build:options && npm run build:action",
     "clean": "rm -rf dist",
     "build:content": "esbuild src/content.ts --bundle --platform=browser --outfile=dist/content.js",
     "build:background": "esbuild src/background.ts --bundle --platform=browser --outfile=dist/background.js",
     "build:options": "esbuild src/options.ts --bundle --platform=browser --outfile=dist/options.js && cp src/options.html dist/options.html",
-    "build": "npm run build:content && npm run build:background && npm run build:options"
+    "build:action": "esbuild src/action.ts --bundle --platform=browser --outfile=dist/action.js && cp src/action.html dist/action.html",
+    "build": "npm run clean && npm run build:all"
   }
 }

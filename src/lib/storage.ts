@@ -1,16 +1,34 @@
 // src/lib/storage.ts
-// Small promise wrappers for chrome.storage.sync
+// Small promise wrapper around chrome.storage.sync for get/set operations.
 
-export function getStorage<T = any>(key: string): Promise<T | undefined> {
-  return new Promise((resolve) => {
-    chrome.storage.sync.get([key], (result: Record<string, any>) => {
-      resolve(result[key]);
-    });
+export async function getStorage<T = any>(key: string): Promise<T | undefined> {
+  return new Promise((res, rej) => {
+    try {
+      chrome.storage.sync.get([key], (result) => {
+        if (chrome.runtime.lastError) {
+          rej(chrome.runtime.lastError);
+        } else {
+          res(result[key] as T | undefined);
+        }
+      });
+    } catch (e) {
+      rej(e);
+    }
   });
 }
 
-export function setStorage(obj: Record<string, any>): Promise<void> {
-  return new Promise((resolve) => {
-    chrome.storage.sync.set(obj, () => resolve());
+export async function setStorage(obj: Record<string, any>): Promise<void> {
+  return new Promise((res, rej) => {
+    try {
+      chrome.storage.sync.set(obj, () => {
+        if (chrome.runtime.lastError) {
+          rej(chrome.runtime.lastError);
+        } else {
+          res();
+        }
+      });
+    } catch (e) {
+      rej(e);
+    }
   });
 }

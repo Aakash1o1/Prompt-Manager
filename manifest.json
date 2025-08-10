@@ -28,7 +28,8 @@
     }
   },
   "action": {
-    "default_title": "Prompt Manager"
+    "default_title": "Prompt Manager",
+    "default_popup": "dist/action.html"
   },
   "web_accessible_resources": [
     {

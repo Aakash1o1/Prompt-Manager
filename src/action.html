@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Prompt Manager — Enable site</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial; padding: 12px; width:320px; }
+    label { display:block; margin-top:8px; font-weight:600; }
+    input[type="text"]{width:100%;padding:8px;border-radius:6px;border:1px solid #ddd; margin-top:6px}
+    button { margin-top:10px; padding:8px 12px; border-radius:6px; border: none; background:#2b7bdb; color:#fff; cursor:pointer; width:100%; }
+    .small { font-size:13px; color:#666; margin-top:8px; }
+    code { background:#f3f4f6; padding:2px 4px; border-radius:4px; }
+  </style>
+</head>
+<body>
+  <h3 style="margin:0 0 8px 0">Enable Prompt Drawer on a site</h3>
+  <div class="small">Enter a host pattern (e.g. <code>https://chat.openai.com/*</code>)</div>
+  <label for="host">Site pattern</label>
+  <input id="host" type="text" placeholder="https://example.com/*" />
+  <button id="enable">Request permission & enable</button>
+  <div id="status" class="small"></div>
+
+  <script src="action.js"></script>
+</body>
+</html>
