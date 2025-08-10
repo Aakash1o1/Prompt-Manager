@@ -1,7 +1,7 @@
 // src/content.ts
 // Content script (Shadow DOM) for Prompt Manager
-// Features: prompt CRUD, drag reorder (FLIP), search, settings, resizable from any edge/corner,
-// tolerant hide (10px), storage sync, and toolbar message handling.
+// Updated: improved close behavior, single scrollbar (only .list), tolerant leave,
+// global outside-click to close, and stable resize from any edge/corner.
 
 import { getStorage, setStorage } from './lib/storage';
 
@@ -55,15 +55,17 @@ function createOrGetHost() {
       :host([data-theme="light"]) { --bg-a: #ffffff; --bg-b: #f3f6fb; --txt: #111827; --hotspot-color: #cfeeff; }
       .hotzone { position: fixed; right: 10px; bottom: 10px; width: 48px; height: 48px; background: var(--hotspot-color); border-radius: 10px; display:flex; align-items:center; justify-content:center; z-index:2147483650; cursor:pointer; box-shadow:0 6px 18px rgba(0,0,0,0.2); user-select:none; font-size:18px; color:#05314f; }
       :host([data-hotspot-position="edge"]) .hotzone { right:0; width: var(--hotspot-width); height: var(--popup-height); top: calc(50% - (var(--popup-height) / 2)); border-radius:0; display:flex; align-items:center; justify-content:center; writing-mode: vertical-rl; }
-      .panel { position: fixed; right: 12px; bottom: 72px; width: var(--popup-width); height: var(--popup-height); z-index:2147483651; border-radius: 10px; box-shadow: 0 14px 44px rgba(0,0,0,0.36); overflow: auto; display:none; flex-direction:column; font-family: var(--font-family); color: var(--txt); background: linear-gradient(180deg, var(--bg-a), var(--bg-b)); border: 1px solid rgba(255,255,255,0.04); padding:10px; box-sizing:border-box; resize: both; }
+      /* IMPORTANT: panel overflow hidden so only inner .list shows scrollbars */
+      .panel { position: fixed; right: 12px; bottom: 72px; width: var(--popup-width); height: var(--popup-height); z-index:2147483651; border-radius: 10px; box-shadow: 0 14px 44px rgba(0,0,0,0.36); overflow: hidden; display:none; flex-direction:column; font-family: var(--font-family); color: var(--txt); background: linear-gradient(180deg, var(--bg-a), var(--bg-b)); border: 1px solid rgba(255,255,255,0.04); padding:10px; box-sizing:border-box; resize: both; }
       .panel.open { display:flex; }
-      .header { display:flex; align-items:center; gap:8px; padding:6px; }
+      .header { display:flex; align-items:center; gap:8px; padding:6px; flex: 0 0 auto; }
       .title { font-weight:700; font-size:14px; color:var(--txt); flex: 0 0 auto; }
       .search { flex:1; min-width:0; }
       .search input { width:100%; padding:6px 8px; border-radius:8px; border:1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02); color:var(--txt); }
       .controls { display:flex; gap:6px; flex:0 0 auto; }
       .ctrl-btn { background: transparent; border: 1px solid rgba(255,255,255,0.06); border-radius:8px; padding:6px 8px; color:var(--txt); cursor:pointer; }
-      .list { flex:1; overflow-y:auto; padding:6px; margin-top:6px; }
+      /* list is the only scrollable area */
+      .list { flex:1 1 auto; overflow-y:auto; padding:6px; margin-top:6px; -webkit-overflow-scrolling: touch; }
       .row { display:flex; align-items:center; gap:8px; padding:8px; border-radius:8px; background: rgba(255,255,255,0.02); margin-bottom:8px; min-height:34px; transition: transform 160ms ease, opacity 120ms ease; }
       .row.heading-row { min-height:26px; }
       .dragging { opacity:0.55; transform: scale(0.98); }
@@ -85,6 +87,8 @@ function createOrGetHost() {
       .toast.show { opacity:1; }
       /* resize handles (hit-targets) */
       .resize-handle { position: absolute; background: transparent; z-index:2147483652; }
+      /* hide panel-level scrollbar if any (safety) */
+      .panel::-webkit-scrollbar { display: none; }
     </style>
 
     <div class="hotzone" id="hotzone" title="Open Prompt Drawer">💬</div>
@@ -541,6 +545,39 @@ async function renderUI(host: HTMLElement, shadow: ShadowRoot) {
 
   // ensure handles exist
   ensureResizeHandles();
+
+  // --- Global outside-click: close when clicking outside panel (respects tolerance and editing) ---
+  function isNodeInsidePanel(node: EventTarget | null) {
+    if (!node) return false;
+    // event.composedPath works with shadow DOM
+    try {
+      const path = (node as any)?.composedPath?.();
+      if (Array.isArray(path)) return path.includes(panel) || path.includes(host);
+    } catch {}
+    return false;
+  }
+
+  document.addEventListener('mousedown', (ev) => {
+    // only react when panel is open
+    if (!panel.classList.contains('open')) return;
+    // if click was inside panel or host, ignore
+    const path = (ev as any).composedPath ? (ev as any).composedPath() : (ev as any).path || [];
+    if (Array.isArray(path) && (path.includes(panel) || path.includes(host))) return;
+    // if clicked inside 10px tolerance area, ignore
+    const rect = panel.getBoundingClientRect();
+    if (isPointInsideExtendedRect((ev as MouseEvent).clientX, (ev as MouseEvent).clientY, rect, CLOSE_TOLERANCE_PX)) return;
+    if (!isAddingOrEditing) panel.classList.remove('open');
+  });
+
+  // also hide on window blur (user switches tab/window)
+  window.addEventListener('blur', () => { if (!isAddingOrEditing) panel.classList.remove('open'); });
+
+  // close on Escape
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && panel.classList.contains('open') && !isAddingOrEditing) {
+      panel.classList.remove('open');
+    }
+  });
 }
 
 /* initialization */
