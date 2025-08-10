@@ -8,8 +8,10 @@
     "@types/chrome": "^0.0.157"
   },
   "scripts": {
-    "build": "npm run build:content",
-    "build:content": "esbuild src/content.ts --bundle --platform=browser --target=es2019 --outfile=dist/content.js && cp src/content.css dist/content.css",
+    "build": "npm run build:all",
+    "build:all": "npm run build:content && npm run build:background",
+    "build:content": "esbuild src/content.ts --bundle --platform=browser --target=es2019 --outfile=dist/content.js",
+    "build:background": "esbuild src/background.ts --bundle --platform=browser --target=es2019 --outfile=dist/background.js",
     "clean": "rm -rf dist"
   }
 }

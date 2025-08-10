@@ -2,63 +2,87 @@
 import { getStorage, setStorage } from './lib/storage';
 
 type Prompt = { id: string; title: string; text: string };
+type Settings = {
+  popupHeightVh: number;
+  popupWidthPx: number;
+  fontFamily: string;
+  theme: 'light' | 'dark';
+  hotspotPosition: 'corner' | 'edge';
+  hotspotWidthPx: number;
+};
 
-const STORAGE_KEY = 'promptManager.prompts';
+const PROMPTS_KEY = 'promptManager.prompts';
+const SETTINGS_KEY = 'promptManager.settings';
 const HOST_ID = 'prompt-drawer-host-shadow';
 
 let prompts: Prompt[] = [];
+let settings: Settings;
 let isAddingOrEditing = false;
 let editingId: string | null = null;
 let draggedId: string | null = null;
 
-/* ---------- Helpers ---------- */
-function uid() {
-  return Math.random().toString(36).slice(2, 9);
-}
-function escapeHtml(s: string) {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+/* Defaults */
+const DEFAULT_SETTINGS: Settings = {
+  popupHeightVh: 50,
+  popupWidthPx: 360,
+  fontFamily: 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial',
+  theme: 'dark',
+  hotspotPosition: 'corner',
+  hotspotWidthPx: 28
+};
 
-/* ---------- Shadow host ---------- */
-function createOrGetHost(): ShadowRoot {
-  const existing = document.getElementById(HOST_ID) as HTMLElement | null;
-  if (existing && existing.shadowRoot) return existing.shadowRoot;
-  if (existing) existing.remove();
+function uid() { return Math.random().toString(36).slice(2, 9); }
 
-  const host = document.createElement('div');
+/* Create host + shadow root */
+function createOrGetHost() {
+  let host = document.getElementById(HOST_ID) as HTMLElement | null;
+  if (host && host.shadowRoot) return { host, shadow: host.shadowRoot as ShadowRoot };
+  if (host) host.remove();
+  host = document.createElement('div');
   host.id = HOST_ID;
   Object.assign(host.style, { all: 'initial' });
   document.documentElement.appendChild(host);
-
   const shadow = host.attachShadow({ mode: 'open' });
 
+  // inline HTML + CSS (use CSS variables set on host for runtime values)
   shadow.innerHTML = `
     <style>
       :host { all: initial; }
 
-      /* Hotzone */
+      /* Basic constants */
+      :host { --popup-width: 360px; --popup-height: 50vh; --font-family: 'Inter', system-ui; --bg-a: #1f2d4a; --bg-b: #274a8f; --bg-accent: #2e6be0; --txt: #eaf4ff; --hotspot-color: #cfeeff; --hotspot-width: 28px; }
+
+      /* LIGHT theme overrides (host attribute) */
+      :host([data-theme="light"]) {
+        --bg-a: #ffffff;
+        --bg-b: #f3f6fb;
+        --bg-accent: #e6f0ff;
+        --txt: #111827;
+        --hotspot-color: #cfeeff;
+      }
+
+      /* Dark theme defaults already defined by CSS vars above */
+
+      /* Hotspot */
       .hotzone {
         position: fixed;
         right: 10px;
         bottom: 10px;
         width: 48px;
         height: 48px;
-        background: #cfeeff;
+        background: var(--hotspot-color);
         border-radius: 10px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 2147483650;
-        cursor: pointer;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.14);
-        user-select: none;
-        font-size: 18px;
-        color: #05314f;
+        display: flex; align-items: center; justify-content: center;
+        z-index: 2147483650; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+        user-select: none; font-size: 18px; color: #05314f;
+      }
+      :host([data-hotspot-position="edge"]) .hotzone {
+        right: 0;
+        width: var(--hotspot-width);
+        height: var(--popup-height);
+        top: calc(50% - (var(--popup-height) / 2));
+        border-radius: 0;
+        display:flex; align-items:center; justify-content:center; writing-mode: vertical-rl;
       }
 
       /* Panel */
@@ -66,78 +90,58 @@ function createOrGetHost(): ShadowRoot {
         position: fixed;
         right: 12px;
         bottom: 72px;
-        width: 360px;
-        height: 50vh;
+        width: var(--popup-width);
+        height: var(--popup-height);
         z-index: 2147483651;
-        border-radius: 12px;
-        box-shadow: 0 12px 36px rgba(0,0,0,0.28);
-        overflow: hidden;
-        display: none;
-        flex-direction: column;
-        font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-        color: #e8f6ff;
-        background: linear-gradient(145deg, #1e3c72 0%, #2a5298 60%, #3b6bb8 100%);
-        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 10px;
+        box-shadow: 0 14px 44px rgba(0,0,0,0.36);
+        overflow: hidden; display: none; flex-direction: column;
+        font-family: var(--font-family);
+        color: var(--txt);
+        background: linear-gradient(180deg, var(--bg-a), var(--bg-b));
+        border: 1px solid rgba(255,255,255,0.04);
         padding: 10px;
         box-sizing: border-box;
       }
-      .panel.open { display: flex; }
+      .panel.open { display:flex; }
 
-      .header { display:flex; align-items:center; justify-content:space-between; gap:8px; padding: 6px 4px; }
-      .title { font-weight:700; font-size:14px; color: #f8ffff; }
-      .close-btn { background: rgba(255,255,255,0.06); border: none; color: #fff; padding: 6px 8px; border-radius: 8px; cursor: pointer; font-weight:600; }
+      /* Header */
+      .header { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px; }
+      .title { font-weight:700; font-size:14px; color:var(--txt); }
+      .controls { display:flex; gap:6px; }
+      .ctrl-btn { background: transparent; border: 1px solid rgba(255,255,255,0.06); border-radius:8px; padding:6px 8px; color:var(--txt); cursor:pointer; }
 
       /* List */
-      .list { flex: 1 1 auto; overflow-y: auto; padding: 6px; margin-top: 6px; position: relative; }
-      .row {
-        display:flex; align-items:center; gap:8px;
-        padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,0.02); margin-bottom: 8px;
-        min-height: 36px; /* reduced default height */
-        transition: transform 160ms ease, background-color 120ms ease, opacity 120ms ease;
-      }
-      .row.heading-row { min-height: 30px; } /* decreased heading bubble height */
+      .list { flex:1; overflow-y:auto; padding:6px; margin-top:6px; }
+      .row { display:flex; align-items:center; gap:8px; padding:8px; border-radius:8px; background: rgba(255,255,255,0.02); margin-bottom:8px; min-height:36px; transition: transform 160ms ease, opacity 120ms ease; }
+      .row.heading-row { min-height:30px; } /* smaller heading bubble height */
 
-      .row.dragging { opacity: 0.55; transform: scale(0.98); }
-      .row.drop-target { outline: 2px dashed rgba(255,255,255,0.18); background: rgba(255,255,255,0.03); }
+      .dragging { opacity:0.55; transform: scale(0.98); }
+      .drop-target { outline: 2px dashed rgba(255,255,255,0.12); background: rgba(255,255,255,0.03); }
 
       .left { display:flex; align-items:center; gap:8px; flex:1; min-width:0; }
-      .drag-handle {
-        width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;
-        background: rgba(255,255,255,0.04); color:#e8f6ff; cursor:grab; user-select:none;
-      }
+      .drag-handle { width:22px; height:22px; display:flex; align-items:center; justify-content:center; border-radius:6px; background: rgba(255,255,255,0.03); cursor:grab; }
       .drag-handle:active { cursor:grabbing; }
-      .label { flex:1; font-weight:600; color:#f0fbff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:default; }
+      .label { flex:1; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:default; color:var(--txt); }
 
-      .icons { display:flex; gap:6px; flex: 0 0 auto; }
-      .icon-btn { background: rgba(255,255,255,0.06); border: none; color: #e8f6ff; width:32px; height:32px; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
-      .icon-btn:hover { background: rgba(255,255,255,0.12); }
+      .icons { display:flex; gap:6px; }
+      .icon-btn { background: rgba(255,255,255,0.03); border: none; color: var(--txt); width:32px; height:32px; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
 
-      .placeholder {
-        height: 12px;
-        margin: 4px 0;
-        border-radius: 6px;
-        background: rgba(255,255,255,0.08);
-        transition: height 120ms ease, background-color 120ms ease;
-      }
+      .placeholder { height:12px; margin:6px 0; border-radius:6px; background: rgba(255,255,255,0.06); transition: height 120ms ease; }
 
-      .add-area { margin-top: 8px; display: none; flex-direction: column; gap: 8px; }
+      /* Add area / settings */
+      .add-area { margin-top:8px; display:none; flex-direction:column; gap:8px; }
       .add-area.open { display:flex; }
-      .add-area input[type="text"], .add-area textarea {
-        width:100%; padding:8px; border-radius:8px; border:1px solid rgba(255,255,255,0.06);
-        background: rgba(255,255,255,0.02); color: #eaf9ff; font-size:13px; box-sizing: border-box;
-      }
-      .add-area textarea { min-height:110px; resize:vertical; }
+      input[type="text"], textarea { width:100%; padding:8px; border-radius:8px; border:1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02); color:var(--txt); box-sizing:border-box; }
+      textarea { min-height:110px; resize:vertical; }
 
-      .add-actions { display:flex; gap:8px; justify-content:flex-end; }
-      .btn { background: rgba(255,255,255,0.06); color: #fff; border: none; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
-      .btn.primary { background: linear-gradient(90deg,#54a0ff,#2b7bdb); font-weight:700; }
+      .settings-area { margin-top:8px; display:none; flex-direction:column; gap:8px; }
+      .settings-area.open { display:flex; }
+      .settings-row { display:flex; gap:8px; align-items:center; }
+      .settings-row label { width:140px; color:var(--txt); font-size:13px; }
 
-      .empty { color: rgba(235,245,255,0.8); padding: 18px; text-align:center; }
-      .toast { position: absolute; left: 50%; transform: translateX(-50%); bottom: 12px; background: rgba(0,0,0,0.7); color: #fff; padding: 8px 12px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity 0.18s, transform 0.18s; }
-      .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-
-      .list::-webkit-scrollbar { width: 8px; }
-      .list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 6px; }
+      .toast { position:absolute; left:50%; transform:translateX(-50%); bottom:12px; background: rgba(0,0,0,0.65); color:#fff; padding:8px 12px; border-radius:8px; font-size:13px; opacity:0; transition:opacity .18s; }
+      .toast.show { opacity:1; }
     </style>
 
     <div class="hotzone" id="hotzone" title="Open Prompt Drawer">💬</div>
@@ -145,20 +149,38 @@ function createOrGetHost(): ShadowRoot {
     <div class="panel" id="panel" role="dialog" aria-label="Prompt Drawer">
       <div class="header">
         <div class="title">Prompt Drawer</div>
-        <div style="display:flex;gap:6px">
-          <button class="btn" id="add-btn" title="Add prompt">Add</button>
-          <button class="close-btn" id="close-btn" title="Close">✕</button>
+        <div class="controls">
+          <button id="add-btn" class="ctrl-btn">Add</button>
+          <button id="settings-btn" class="ctrl-btn">Settings</button>
+          <button id="close-btn" class="ctrl-btn">✕</button>
         </div>
       </div>
 
       <div class="list" id="list" role="list"></div>
 
       <div class="add-area" id="add-area" aria-hidden="true">
-        <input type="text" id="input-title" placeholder="Prompt title" />
+        <input id="input-title" type="text" placeholder="Prompt title" />
         <textarea id="input-body" placeholder="Full prompt text"></textarea>
-        <div class="add-actions">
-          <button class="btn" id="cancel-btn">Cancel</button>
-          <button class="btn primary" id="save-btn">Save</button>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button id="cancel-btn" class="ctrl-btn">Cancel</button>
+          <button id="save-btn" class="ctrl-btn">Save</button>
+        </div>
+      </div>
+
+      <div class="settings-area" id="settings-area" aria-hidden="true">
+        <div class="settings-row"><label>Popup height (vh)</label><input id="s-popup-height" type="number" min="20" max="100" /></div>
+        <div class="settings-row"><label>Popup width (px)</label><input id="s-popup-width" type="number" min="200" max="1000" /></div>
+        <div class="settings-row"><label>Font family</label><input id="s-font-family" type="text" /></div>
+        <div class="settings-row"><label>Theme</label>
+          <select id="s-theme"><option value="dark">Dark</option><option value="light">Light</option></select>
+        </div>
+        <div class="settings-row"><label>Hotspot position</label>
+          <select id="s-hotspot-pos"><option value="corner">Corner</option><option value="edge">Right edge</option></select>
+        </div>
+        <div class="settings-row"><label>Hotspot width (px)</label><input id="s-hotspot-width" type="number" min="12" max="120" /></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button id="s-cancel" class="ctrl-btn">Cancel</button>
+          <button id="s-save" class="ctrl-btn">Save</button>
         </div>
       </div>
 
@@ -166,11 +188,11 @@ function createOrGetHost(): ShadowRoot {
     </div>
   `;
 
-  return shadow;
+  return { host, shadow };
 }
 
-/* ---------- FLIP animation helpers ---------- */
-function getRectsMap(shadow: ShadowRoot): Map<string, DOMRect> {
+/* FLIP helpers (same idea as before) */
+function getRectsMap(shadow: ShadowRoot) {
   const map = new Map<string, DOMRect>();
   shadow.querySelectorAll<HTMLElement>('.row').forEach((el) => {
     const id = el.dataset.id;
@@ -194,324 +216,211 @@ function playFLIP(shadow: ShadowRoot, before: Map<string, DOMRect>) {
     requestAnimationFrame(() => {
       el.style.transition = 'transform 180ms ease';
       el.style.transform = '';
-      const clean = () => {
-        el.style.transition = '';
-        el.style.transform = '';
-        el.removeEventListener('transitionend', clean);
-      };
+      const clean = () => { el.style.transition = ''; el.style.transform = ''; el.removeEventListener('transitionend', clean); };
       el.addEventListener('transitionend', clean);
     });
   });
 }
 
-/* ---------- UI rendering & DnD logic ---------- */
-async function renderUI(shadow: ShadowRoot) {
+/* Apply settings to host via CSS variables / attributes */
+function applySettingsToHost(host: HTMLElement, s: Settings) {
+  host.style.setProperty('--popup-width', `${s.popupWidthPx}px`);
+  host.style.setProperty('--popup-height', `${s.popupHeightVh}vh`);
+  host.style.setProperty('--font-family', s.fontFamily);
+  host.style.setProperty('--hotspot-width', `${s.hotspotWidthPx}px`);
+  host.setAttribute('data-hotspot-position', s.hotspotPosition);
+  host.setAttribute('data-theme', s.theme);
+}
+
+/* Rendering & logic (DnD, between-drop, add/edit, settings) */
+async function renderUI(host: HTMLElement, shadow: ShadowRoot) {
   const hotzone = shadow.getElementById('hotzone') as HTMLElement;
   const panel = shadow.getElementById('panel') as HTMLElement;
   const list = shadow.getElementById('list') as HTMLElement;
   const addArea = shadow.getElementById('add-area') as HTMLElement;
+  const settingsArea = shadow.getElementById('settings-area') as HTMLElement;
   const inputTitle = shadow.getElementById('input-title') as HTMLInputElement;
   const inputBody = shadow.getElementById('input-body') as HTMLTextAreaElement;
   const addBtn = shadow.getElementById('add-btn') as HTMLButtonElement;
   const saveBtn = shadow.getElementById('save-btn') as HTMLButtonElement;
   const cancelBtn = shadow.getElementById('cancel-btn') as HTMLButtonElement;
   const closeBtn = shadow.getElementById('close-btn') as HTMLButtonElement;
+  const settingsBtn = shadow.getElementById('settings-btn') as HTMLButtonElement;
   const toastEl = shadow.getElementById('toast') as HTMLElement;
 
-  function showPanel() { panel.classList.add('open'); }
-  function hidePanel() { if (!isAddingOrEditing) panel.classList.remove('open'); }
-  function showAddArea(prefillTitle = '', prefillBody = '') {
-    isAddingOrEditing = true;
-    editingId = null;
-    inputTitle.value = prefillTitle;
-    inputBody.value = prefillBody;
-    addArea.classList.add('open');
-    addArea.setAttribute('aria-hidden', 'false');
-    list.style.display = 'none';
-  }
-  function hideAddArea() {
-    isAddingOrEditing = false;
-    editingId = null;
-    addArea.classList.remove('open');
-    addArea.setAttribute('aria-hidden', 'true');
-    list.style.display = 'block';
-    inputTitle.value = '';
-    inputBody.value = '';
-  }
-  function showToast(msg: string) {
-    toastEl.textContent = msg;
-    toastEl.classList.add('show');
-    setTimeout(() => { toastEl.classList.remove('show'); }, 1400);
-  }
+  // settings inputs
+  const sPopupH = shadow.getElementById('s-popup-height') as HTMLInputElement;
+  const sPopupW = shadow.getElementById('s-popup-width') as HTMLInputElement;
+  const sFont = shadow.getElementById('s-font-family') as HTMLInputElement;
+  const sTheme = shadow.getElementById('s-theme') as HTMLSelectElement;
+  const sHotpos = shadow.getElementById('s-hotspot-pos') as HTMLSelectElement;
+  const sHotw = shadow.getElementById('s-hotspot-width') as HTMLInputElement;
+  const sSave = shadow.getElementById('s-save') as HTMLButtonElement;
+  const sCancel = shadow.getElementById('s-cancel') as HTMLButtonElement;
 
-  // placeholder element used to show drop insertion point
+  function showPanel(){ panel.classList.add('open'); }
+  function hidePanel(){ if (!isAddingOrEditing) panel.classList.remove('open'); }
+  function togglePanel(){ panel.classList.toggle('open'); }
+
+  function showAddArea(prefTitle = '', prefBody = '') {
+    isAddingOrEditing = true; editingId = null; inputTitle.value = prefTitle; inputBody.value = prefBody;
+    addArea.classList.add('open'); addArea.setAttribute('aria-hidden','false'); list.style.display='none'; settingsArea.classList.remove('open');
+  }
+  function hideAddArea(){ isAddingOrEditing = false; editingId = null; addArea.classList.remove('open'); addArea.setAttribute('aria-hidden','true'); list.style.display='block'; inputTitle.value=''; inputBody.value=''; }
+
+  function showSettingsArea(){
+    settingsArea.classList.add('open'); settingsArea.setAttribute('aria-hidden','false');
+    sPopupH.value = String(settings.popupHeightVh);
+    sPopupW.value = String(settings.popupWidthPx);
+    sFont.value = settings.fontFamily;
+    sTheme.value = settings.theme;
+    sHotpos.value = settings.hotspotPosition;
+    sHotw.value = String(settings.hotspotWidthPx);
+    list.style.display='none'; addArea.classList.remove('open');
+  }
+  function hideSettingsArea(){ settingsArea.classList.remove('open'); settingsArea.setAttribute('aria-hidden','true'); list.style.display='block'; }
+
+  function showToast(msg: string){ toastEl.textContent = msg; toastEl.classList.add('show'); setTimeout(()=>toastEl.classList.remove('show'),1400); }
+
+  // placeholder for between-drop
   let placeholder: HTMLElement | null = null;
-  function ensurePlaceholder() {
+  function ensurePlaceholder(){
     if (placeholder) return placeholder;
-    placeholder = document.createElement('div');
-    placeholder.className = 'placeholder';
-    return placeholder;
+    placeholder = document.createElement('div'); placeholder.className = 'placeholder'; return placeholder;
   }
-  function removePlaceholder() {
-    if (!placeholder) return;
-    if (placeholder.parentElement) placeholder.parentElement.removeChild(placeholder);
-    placeholder = null;
-  }
+  function removePlaceholder(){ if (!placeholder) return; if (placeholder.parentElement) placeholder.parentElement.removeChild(placeholder); placeholder = null; }
 
-  // Build list items and wire drag handles
   function buildList() {
     list.innerHTML = '';
-
-    if (!prompts.length) {
-      const e = document.createElement('div');
-      e.className = 'empty';
-      e.textContent = 'No prompts yet. Click Add to create one.';
-      list.appendChild(e);
-      return;
-    }
+    if (!prompts.length) { const e = document.createElement('div'); e.className = 'empty'; e.textContent = 'No prompts yet. Click Add to create one.'; list.appendChild(e); return; }
 
     for (const p of prompts) {
-      const row = document.createElement('div');
-      row.className = 'row';
-      row.dataset.id = p.id;
-      // left: handle + label
-      const left = document.createElement('div');
-      left.className = 'left';
-      const handle = document.createElement('div');
-      handle.className = 'drag-handle';
-      handle.innerHTML = '&#x2261;'; // ≡
-      handle.title = 'Drag to reorder';
-      // make handle draggable only
-      handle.draggable = true;
+      const row = document.createElement('div'); row.className = 'row'; row.dataset.id = p.id;
+      const left = document.createElement('div'); left.className = 'left';
+      const handle = document.createElement('div'); handle.className = 'drag-handle'; handle.innerHTML = '&#x2261;'; handle.draggable = true;
+      const label = document.createElement('div'); label.className = 'label'; label.textContent = p.title;
+      label.addEventListener('click', async () => { try { await navigator.clipboard.writeText(p.text); showToast('Copied'); } catch { showToast('Copy failed'); }});
+      left.appendChild(handle); left.appendChild(label);
 
-      const label = document.createElement('div');
-      label.className = 'label';
-      label.textContent = p.title;
-      label.addEventListener('click', async () => {
-        try { await navigator.clipboard.writeText(p.text); showToast('Copied to clipboard'); } catch { showToast('Copy failed'); }
-      });
+      const icons = document.createElement('div'); icons.className = 'icons';
+      const editBtn = document.createElement('button'); editBtn.className = 'icon-btn'; editBtn.textContent = '✎';
+      editBtn.addEventListener('click', (e) => { e.stopPropagation(); editingId = p.id; showAddArea(p.title, p.text); });
+      const delBtn = document.createElement('button'); delBtn.className = 'icon-btn'; delBtn.textContent = '🗑';
+      delBtn.addEventListener('click', (e) => { e.stopPropagation(); if (confirm('Delete this prompt?')) { prompts = prompts.filter(x=>x.id!==p.id); setStorage({ [PROMPTS_KEY]: prompts }).then(()=>{ buildList(); showToast('Deleted'); }).catch(()=>showToast('Delete failed')); }});
+      icons.appendChild(editBtn); icons.appendChild(delBtn);
 
-      left.appendChild(handle);
-      left.appendChild(label);
+      row.appendChild(left); row.appendChild(icons); list.appendChild(row);
 
-      // icons
-      const icons = document.createElement('div');
-      icons.className = 'icons';
-      const editBtn = document.createElement('button');
-      editBtn.className = 'icon-btn';
-      editBtn.title = 'Edit';
-      editBtn.textContent = '✎';
-      editBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        editingId = p.id;
-        showAddArea(p.title, p.text);
-      });
-      const delBtn = document.createElement('button');
-      delBtn.className = 'icon-btn';
-      delBtn.title = 'Delete';
-      delBtn.textContent = '🗑';
-      delBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (confirm('Delete this prompt?')) {
-          prompts = prompts.filter((x) => x.id !== p.id);
-          setStorage({ [STORAGE_KEY]: prompts })
-            .then(() => { buildList(); showToast('Deleted'); })
-            .catch(() => showToast('Delete failed'));
-        }
-      });
-      icons.appendChild(editBtn);
-      icons.appendChild(delBtn);
+      // drag from handle only
+      handle.addEventListener('dragstart', (ev) => { draggedId = p.id; row.classList.add('dragging'); try { ev.dataTransfer?.setData('text/plain', p.id); } catch {} });
+      handle.addEventListener('dragend', () => { draggedId = null; shadow.querySelectorAll('.row.dragging').forEach(el=>el.classList.remove('dragging')); removePlaceholder(); });
 
-      row.appendChild(left);
-      row.appendChild(icons);
-      list.appendChild(row);
-
-      // Drag start only from handle
-      handle.addEventListener('dragstart', (ev) => {
-        draggedId = p.id;
-        row.classList.add('dragging');
-        try { ev.dataTransfer?.setData('text/plain', p.id); } catch {}
-      });
-      handle.addEventListener('dragend', () => {
-        draggedId = null;
-        shadow.querySelectorAll('.row.dragging').forEach((el) => el.classList.remove('dragging'));
-        removePlaceholder();
-      });
-
-      // Prevent dropping *on top* to reorder. We'll handle between-insertions via list dragover.
-      row.addEventListener('dragover', (ev) => {
-        // do nothing - we handle insertion between items globally
-        ev.preventDefault(); // still allow drop events to bubble
-      });
-      row.addEventListener('drop', (ev) => {
-        // user dropped *on* a bubble — we skip reorder here (user said they'll add separate feature)
-        ev.preventDefault();
-        // optionally you could trigger some other action here in the future
-        removePlaceholder();
-      });
+      // no reorder on drop-on-row; we only reorder between rows
+      row.addEventListener('dragover', (ev)=>{ ev.preventDefault(); });
+      row.addEventListener('drop', (ev)=>{ ev.preventDefault(); removePlaceholder(); });
     }
 
-    // add end drop spacer so user can drop at end
-    const endSpacer = document.createElement('div');
-    endSpacer.style.minHeight = '12px';
-    endSpacer.addEventListener('dragover', (ev) => {
-      ev.preventDefault();
-      // place placeholder at end
-      const ph = ensurePlaceholder();
-      if (list.lastElementChild !== ph) list.appendChild(ph);
-    });
-    endSpacer.addEventListener('drop', (ev) => {
-      ev.preventDefault();
-      const srcId = draggedId ?? ev.dataTransfer?.getData('text/plain') ?? null;
-      if (!srcId) return;
-      // perform move to end with animation
-      const before = getRectsMap(shadow);
-      movePromptToIndex(srcId, prompts.length - 1, before);
-      removePlaceholder();
-    });
+    // spacer for end
+    const endSpacer = document.createElement('div'); endSpacer.style.minHeight='12px';
+    endSpacer.addEventListener('dragover', (ev)=>{ ev.preventDefault(); const ph = ensurePlaceholder(); if (list.lastElementChild !== ph) list.appendChild(ph); });
+    endSpacer.addEventListener('drop', (ev)=>{ ev.preventDefault(); const srcId = draggedId ?? ev.dataTransfer?.getData('text/plain') ?? null; if (!srcId) return; const before = getRectsMap(shadow); movePromptToIndex(srcId, prompts.length - 1, before); removePlaceholder(); });
     list.appendChild(endSpacer);
 
-    // global list dragover: compute between index based on mouse Y
-    list.addEventListener('dragover', (ev) => {
+    // global list dragover computes between index
+    list.addEventListener('dragover', (ev)=>{
       ev.preventDefault();
       const ph = ensurePlaceholder();
-      // find insertion index by comparing mouse Y to midpoints of row elements
       const rows = Array.from(list.querySelectorAll<HTMLElement>('.row'));
       let inserted = false;
-      for (let i = 0; i < rows.length; i++) {
+      for (let i=0;i<rows.length;i++){
         const r = rows[i];
         const rect = r.getBoundingClientRect();
-        const mid = rect.top + rect.height / 2;
-        if (ev.clientY < mid) {
-          if (r.parentElement && r.parentElement.querySelector('.placeholder') !== r) {
-            list.insertBefore(ph, r);
-          }
-          inserted = true;
-          break;
-        }
+        const mid = rect.top + rect.height/2;
+        if (ev.clientY < mid) { if (r.parentElement && r.parentElement.querySelector('.placeholder') !== r) list.insertBefore(ph, r); inserted = true; break; }
       }
-      if (!inserted) {
-        // append at end (before endSpacer)
-        const end = list.lastElementChild!;
-        if (end && end !== ph) list.insertBefore(ph, end);
-      }
+      if (!inserted) { const end = list.lastElementChild!; if (end && end !== ph) list.insertBefore(ph, end); }
     });
 
-    // drop on list (if user releases over list area)
-    list.addEventListener('drop', (ev) => {
+    list.addEventListener('drop', (ev)=> {
       ev.preventDefault();
       const srcId = draggedId ?? ev.dataTransfer?.getData('text/plain') ?? null;
       if (!srcId) { removePlaceholder(); return; }
-      // compute index from placeholder position
       const ph = list.querySelector('.placeholder');
-      if (!ph) { removePlaceholder(); return; }
-      // determine index to insert
+      if (!ph) { removePlaceholder(); return;}
       const children = Array.from(list.children);
       const idx = children.indexOf(ph);
-      // convert children index to prompt array index (rows and possibly other elements)
-      // we count only '.row' elements before the placeholder
       let targetIndex = 0;
-      for (let i = 0; i < idx; i++) {
-        if ((children[i] as HTMLElement).classList.contains('row')) targetIndex++;
-      }
-      // perform move
+      for (let i=0;i<idx;i++){ if ((children[i] as HTMLElement).classList.contains('row')) targetIndex++; }
       const before = getRectsMap(shadow);
       movePromptToIndex(srcId, targetIndex, before);
       removePlaceholder();
     });
   }
 
-  // move srcId to position targetIndex (0..n) — targetIndex is index in prompts AFTER removal to insert at
-  function movePromptToIndex(srcId: string, targetIndex: number, beforeRects?: Map<string, DOMRect>) {
-    const srcIndex = prompts.findIndex((x) => x.id === srcId);
-    if (srcIndex === -1) return;
-    // remove item
-    const [item] = prompts.splice(srcIndex, 1);
-    // adjust targetIndex if srcIndex < targetIndex because removal shifts indices
+  function movePromptToIndex(srcId:string, targetIndex:number, beforeRects?: Map<string,DOMRect>){
+    const srcIndex = prompts.findIndex(x=>x.id===srcId);
+    if (srcIndex===-1) return;
+    const [item] = prompts.splice(srcIndex,1);
     const insertAt = srcIndex < targetIndex ? targetIndex : targetIndex;
-    prompts.splice(insertAt, 0, item);
-    // persist and animate
-    setStorage({ [STORAGE_KEY]: prompts })
-      .then(() => {
-        // rebuild list and animate FLIP
-        buildAndAnimate(beforeRects);
-        showToast('Order saved');
-      })
-      .catch(() => {
-        showToast('Save failed');
-      });
+    prompts.splice(insertAt,0,item);
+    setStorage({ [PROMPTS_KEY]: prompts }).then(()=>{ buildAndAnimate(beforeRects); showToast('Order saved'); }).catch(()=>showToast('Save failed'));
   }
 
-  function movePromptToEnd(srcId: string) {
-    const srcIndex = prompts.findIndex((x) => x.id === srcId);
-    if (srcIndex === -1) return;
-    const [item] = prompts.splice(srcIndex, 1);
-    prompts.push(item);
-    const before = getRectsMap(shadow);
-    setStorage({ [STORAGE_KEY]: prompts })
-      .then(() => {
-        buildAndAnimate(before);
-        showToast('Order saved');
-      })
-      .catch(() => showToast('Save failed'));
-  }
-
-  // helper: rebuild list and play FLIP using provided before rects map
-  function buildAndAnimate(before?: Map<string, DOMRect>) {
+  function buildAndAnimate(before?: Map<string,DOMRect>){
     buildList();
     if (before) playFLIP(shadow, before);
   }
 
-  // initial build (first time)
+  // initial build
   buildList();
 
-  /* ---------- events wiring ---------- */
-  hotzone.addEventListener('mouseenter', () => showPanel());
-  panel.addEventListener('mouseleave', () => hidePanel());
-  addBtn.addEventListener('click', () => showAddArea());
-  closeBtn.addEventListener('click', () => panel.classList.remove('open'));
-  cancelBtn.addEventListener('click', () => hideAddArea());
+  /* events */
+  hotzone.addEventListener('mouseenter', ()=>showPanel());
+  panel.addEventListener('mouseleave', ()=>hidePanel());
+  addBtn.addEventListener('click', ()=>{ showAddArea(); settingsArea.classList.remove('open'); });
+  closeBtn.addEventListener('click', ()=>panel.classList.remove('open'));
+  cancelBtn.addEventListener('click', ()=>hideAddArea());
 
-  saveBtn.addEventListener('click', async () => {
+  saveBtn.addEventListener('click', async ()=>{
     const title = inputTitle.value.trim();
     const text = inputBody.value.trim();
     if (!title || !text) { alert('Both title and prompt are required'); return; }
-
     if (editingId) {
-      const idx = prompts.findIndex((x) => x.id === editingId);
-      if (idx !== -1) prompts[idx] = { ...prompts[idx], title, text };
+      const idx = prompts.findIndex(x=>x.id===editingId);
+      if (idx!==-1) prompts[idx] = { ...prompts[idx], title, text };
     } else {
       const newPrompt: Prompt = { id: uid(), title, text };
       prompts.unshift(newPrompt);
     }
-
-    try {
-      await setStorage({ [STORAGE_KEY]: prompts });
-      buildList();
-      hideAddArea();
-      showToast('Saved');
-    } catch {
-      showToast('Save failed');
-    }
+    try { await setStorage({ [PROMPTS_KEY]: prompts }); buildList(); hideAddArea(); showToast('Saved'); } catch { showToast('Save failed'); }
   });
+
+  // settings handlers
+  settingsBtn.addEventListener('click', ()=>{ if (settingsArea.classList.contains('open')) hideSettingsArea(); else showSettingsArea(); });
+  sCancel.addEventListener('click', ()=>hideSettingsArea());
+  sSave.addEventListener('click', async ()=>{
+    const newS: Settings = {
+      popupHeightVh: Number(sPopupH.value) || settings.popupHeightVh,
+      popupWidthPx: Number(sPopupW.value) || settings.popupWidthPx,
+      fontFamily: sFont.value || settings.fontFamily,
+      theme: (sTheme.value as 'light'|'dark') || settings.theme,
+      hotspotPosition: (sHotpos.value as 'corner'|'edge') || settings.hotspotPosition,
+      hotspotWidthPx: Number(sHotw.value) || settings.hotspotWidthPx
+    };
+    settings = newS; applySettingsToHost(host, settings);
+    try { await setStorage({ [SETTINGS_KEY]: settings }); hideSettingsArea(); showToast('Settings saved'); } catch { showToast('Save failed'); }
+  });
+
+  // background message toggles (Alt+P)
+  chrome.runtime.onMessage.addListener((msg:any)=>{ if (msg?.type==='TOGGLE_POPUP') togglePanel(); });
 }
 
-/* ---------- init ---------- */
-async function loadAndInit() {
-  try {
-    const data = await getStorage<Prompt[]>(STORAGE_KEY);
-    prompts = Array.isArray(data) ? data : [];
-  } catch (e) {
-    console.warn('storage.load failed', e);
-    prompts = [];
-  }
-
-  const shadow = createOrGetHost();
-  await renderUI(shadow);
+/* initialization */
+async function loadAndInit(){
+  try { const p = await getStorage<Prompt[]>(PROMPTS_KEY); prompts = Array.isArray(p)? p : []; } catch { prompts = []; }
+  try { const s = await getStorage<Settings>(SETTINGS_KEY); settings = s ? s : DEFAULT_SETTINGS; } catch { settings = DEFAULT_SETTINGS; }
+  const { host, shadow } = createOrGetHost();
+  applySettingsToHost(host, settings);
+  await renderUI(host, shadow);
 }
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => { loadAndInit().catch(console.error); }, { once: true });
-} else {
-  loadAndInit().catch(console.error);
-}
+if (document.readyState==='loading') { document.addEventListener('DOMContentLoaded', ()=>loadAndInit().catch(console.error), { once:true }); } else { loadAndInit().catch(console.error); }

@@ -3,15 +3,13 @@
   "name": "Prompt Manager",
   "version": "1.0",
   "description": "Manage and quickly copy prompts",
-  "permissions": ["storage", "clipboardWrite", "activeTab", "scripting"],
-  "action": {
-    "default_title": "Prompt Manager"
-  },
+  "permissions": ["storage", "clipboardWrite", "activeTab", "tabs"],
+  "action": { "default_title": "Prompt Manager" },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
       "js": ["dist/content.js"],
-      "css": ["dist/content.css"]
+      "run_at": "document_idle"
     }
   ],
   "background": {
@@ -19,10 +17,8 @@
   },
   "commands": {
     "open-prompt-drawer": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+Y"
-      },
-      "description": "Toggle the prompt popup"
+      "suggested_key": { "default": "Alt+P" },
+      "description": "Toggle prompt popup"
     }
   }
 }
