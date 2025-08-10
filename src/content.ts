@@ -1,7 +1,7 @@
 // src/content.ts
 import { getStorage, setStorage } from './lib/storage';
 
-type Prompt = { id: string; title: string; text: string };
+type Prompt = { id: string; title: string; text: string; quick?: string };
 type Settings = {
   popupHeightVh: number;
   popupWidthPx: number;
@@ -33,7 +33,6 @@ const DEFAULT_SETTINGS: Settings = {
 
 function uid() { return Math.random().toString(36).slice(2, 9); }
 
-/* Create host + shadow root */
 function createOrGetHost() {
   let host = document.getElementById(HOST_ID) as HTMLElement | null;
   if (host && host.shadowRoot) return { host, shadow: host.shadowRoot as ShadowRoot };
@@ -44,102 +43,39 @@ function createOrGetHost() {
   document.documentElement.appendChild(host);
   const shadow = host.attachShadow({ mode: 'open' });
 
-  // inline HTML + CSS (use CSS variables set on host for runtime values)
   shadow.innerHTML = `
     <style>
       :host { all: initial; }
-
-      /* Basic constants */
-      :host { --popup-width: 360px; --popup-height: 50vh; --font-family: 'Inter', system-ui; --bg-a: #1f2d4a; --bg-b: #274a8f; --bg-accent: #2e6be0; --txt: #eaf4ff; --hotspot-color: #cfeeff; --hotspot-width: 28px; }
-
-      /* LIGHT theme overrides (host attribute) */
-      :host([data-theme="light"]) {
-        --bg-a: #ffffff;
-        --bg-b: #f3f6fb;
-        --bg-accent: #e6f0ff;
-        --txt: #111827;
-        --hotspot-color: #cfeeff;
-      }
-
-      /* Dark theme defaults already defined by CSS vars above */
-
-      /* Hotspot */
-      .hotzone {
-        position: fixed;
-        right: 10px;
-        bottom: 10px;
-        width: 48px;
-        height: 48px;
-        background: var(--hotspot-color);
-        border-radius: 10px;
-        display: flex; align-items: center; justify-content: center;
-        z-index: 2147483650; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,0.2);
-        user-select: none; font-size: 18px; color: #05314f;
-      }
-      :host([data-hotspot-position="edge"]) .hotzone {
-        right: 0;
-        width: var(--hotspot-width);
-        height: var(--popup-height);
-        top: calc(50% - (var(--popup-height) / 2));
-        border-radius: 0;
-        display:flex; align-items:center; justify-content:center; writing-mode: vertical-rl;
-      }
-
-      /* Panel */
-      .panel {
-        position: fixed;
-        right: 12px;
-        bottom: 72px;
-        width: var(--popup-width);
-        height: var(--popup-height);
-        z-index: 2147483651;
-        border-radius: 10px;
-        box-shadow: 0 14px 44px rgba(0,0,0,0.36);
-        overflow: hidden; display: none; flex-direction: column;
-        font-family: var(--font-family);
-        color: var(--txt);
-        background: linear-gradient(180deg, var(--bg-a), var(--bg-b));
-        border: 1px solid rgba(255,255,255,0.04);
-        padding: 10px;
-        box-sizing: border-box;
-      }
+      :host { --popup-width: 360px; --popup-height: 50vh; --font-family: 'Inter', system-ui; --bg-a: #1f2d4a; --bg-b: #274a8f; --txt: #eaf4ff; --hotspot-color: #cfeeff; --hotspot-width: 28px; }
+      :host([data-theme="light"]) { --bg-a: #ffffff; --bg-b: #f3f6fb; --txt: #111827; --hotspot-color: #cfeeff; }
+      .hotzone { position: fixed; right: 10px; bottom: 10px; width: 48px; height: 48px; background: var(--hotspot-color); border-radius: 10px; display:flex; align-items:center; justify-content:center; z-index:2147483650; cursor:pointer; box-shadow:0 6px 18px rgba(0,0,0,0.2); user-select:none; font-size:18px; color:#05314f; }
+      :host([data-hotspot-position="edge"]) .hotzone { right:0; width: var(--hotspot-width); height: var(--popup-height); top: calc(50% - (var(--popup-height) / 2)); border-radius:0; display:flex; align-items:center; justify-content:center; writing-mode: vertical-rl; }
+      .panel { position: fixed; right: 12px; bottom: 72px; width: var(--popup-width); height: var(--popup-height); z-index:2147483651; border-radius: 10px; box-shadow: 0 14px 44px rgba(0,0,0,0.36); overflow: auto; display:none; flex-direction:column; font-family: var(--font-family); color: var(--txt); background: linear-gradient(180deg, var(--bg-a), var(--bg-b)); border: 1px solid rgba(255,255,255,0.04); padding:10px; box-sizing:border-box; resize: both; }
       .panel.open { display:flex; }
-
-      /* Header */
-      .header { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px; }
-      .title { font-weight:700; font-size:14px; color:var(--txt); }
-      .controls { display:flex; gap:6px; }
+      .header { display:flex; align-items:center; gap:8px; padding:6px; }
+      .title { font-weight:700; font-size:14px; color:var(--txt); flex: 0 0 auto; }
+      .search { flex:1; min-width:0; }
+      .search input { width:100%; padding:6px 8px; border-radius:8px; border:1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02); color:var(--txt); }
+      .controls { display:flex; gap:6px; flex:0 0 auto; }
       .ctrl-btn { background: transparent; border: 1px solid rgba(255,255,255,0.06); border-radius:8px; padding:6px 8px; color:var(--txt); cursor:pointer; }
-
-      /* List */
       .list { flex:1; overflow-y:auto; padding:6px; margin-top:6px; }
-      .row { display:flex; align-items:center; gap:8px; padding:8px; border-radius:8px; background: rgba(255,255,255,0.02); margin-bottom:8px; min-height:36px; transition: transform 160ms ease, opacity 120ms ease; }
-      .row.heading-row { min-height:30px; } /* smaller heading bubble height */
-
+      .row { display:flex; align-items:center; gap:8px; padding:8px; border-radius:8px; background: rgba(255,255,255,0.02); margin-bottom:8px; min-height:34px; transition: transform 160ms ease, opacity 120ms ease; }
+      .row.heading-row { min-height:26px; } /* decreased heading height */
       .dragging { opacity:0.55; transform: scale(0.98); }
-      .drop-target { outline: 2px dashed rgba(255,255,255,0.12); background: rgba(255,255,255,0.03); }
-
       .left { display:flex; align-items:center; gap:8px; flex:1; min-width:0; }
-      .drag-handle { width:22px; height:22px; display:flex; align-items:center; justify-content:center; border-radius:6px; background: rgba(255,255,255,0.03); cursor:grab; }
-      .drag-handle:active { cursor:grabbing; }
-      .label { flex:1; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:default; color:var(--txt); }
-
+      .drag-handle { width:20px; height:20px; display:flex; align-items:center; justify-content:center; border-radius:6px; background: rgba(255,255,255,0.03); cursor:grab; }
+      .label { flex:1; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--txt); }
       .icons { display:flex; gap:6px; }
       .icon-btn { background: rgba(255,255,255,0.03); border: none; color: var(--txt); width:32px; height:32px; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
-
       .placeholder { height:12px; margin:6px 0; border-radius:6px; background: rgba(255,255,255,0.06); transition: height 120ms ease; }
-
-      /* Add area / settings */
       .add-area { margin-top:8px; display:none; flex-direction:column; gap:8px; }
       .add-area.open { display:flex; }
       input[type="text"], textarea { width:100%; padding:8px; border-radius:8px; border:1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02); color:var(--txt); box-sizing:border-box; }
-      textarea { min-height:110px; resize:vertical; }
-
+      textarea { min-height:110px; resize: vertical; }
       .settings-area { margin-top:8px; display:none; flex-direction:column; gap:8px; }
       .settings-area.open { display:flex; }
       .settings-row { display:flex; gap:8px; align-items:center; }
       .settings-row label { width:140px; color:var(--txt); font-size:13px; }
-
       .toast { position:absolute; left:50%; transform:translateX(-50%); bottom:12px; background: rgba(0,0,0,0.65); color:#fff; padding:8px 12px; border-radius:8px; font-size:13px; opacity:0; transition:opacity .18s; }
       .toast.show { opacity:1; }
     </style>
@@ -149,6 +85,7 @@ function createOrGetHost() {
     <div class="panel" id="panel" role="dialog" aria-label="Prompt Drawer">
       <div class="header">
         <div class="title">Prompt Drawer</div>
+        <div class="search"><input id="search-input" type="text" placeholder="Search prompts or quick code (e.g. ../)..." /></div>
         <div class="controls">
           <button id="add-btn" class="ctrl-btn">Add</button>
           <button id="settings-btn" class="ctrl-btn">Settings</button>
@@ -160,6 +97,7 @@ function createOrGetHost() {
 
       <div class="add-area" id="add-area" aria-hidden="true">
         <input id="input-title" type="text" placeholder="Prompt title" />
+        <input id="input-quick" type="text" placeholder="Quick search code (e.g. ../ or pp)" />
         <textarea id="input-body" placeholder="Full prompt text"></textarea>
         <div style="display:flex;gap:8px;justify-content:flex-end">
           <button id="cancel-btn" class="ctrl-btn">Cancel</button>
@@ -191,7 +129,7 @@ function createOrGetHost() {
   return { host, shadow };
 }
 
-/* FLIP helpers (same idea as before) */
+/* FLIP helpers */
 function getRectsMap(shadow: ShadowRoot) {
   const map = new Map<string, DOMRect>();
   shadow.querySelectorAll<HTMLElement>('.row').forEach((el) => {
@@ -210,8 +148,6 @@ function playFLIP(shadow: ShadowRoot, before: Map<string, DOMRect>) {
     if (dy === 0) return;
     el.style.transition = 'none';
     el.style.transform = `translateY(${dy}px)`;
-    // force reflow
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
     el.offsetHeight;
     requestAnimationFrame(() => {
       el.style.transition = 'transform 180ms ease';
@@ -222,7 +158,6 @@ function playFLIP(shadow: ShadowRoot, before: Map<string, DOMRect>) {
   });
 }
 
-/* Apply settings to host via CSS variables / attributes */
 function applySettingsToHost(host: HTMLElement, s: Settings) {
   host.style.setProperty('--popup-width', `${s.popupWidthPx}px`);
   host.style.setProperty('--popup-height', `${s.popupHeightVh}vh`);
@@ -232,7 +167,6 @@ function applySettingsToHost(host: HTMLElement, s: Settings) {
   host.setAttribute('data-theme', s.theme);
 }
 
-/* Rendering & logic (DnD, between-drop, add/edit, settings) */
 async function renderUI(host: HTMLElement, shadow: ShadowRoot) {
   const hotzone = shadow.getElementById('hotzone') as HTMLElement;
   const panel = shadow.getElementById('panel') as HTMLElement;
@@ -240,6 +174,7 @@ async function renderUI(host: HTMLElement, shadow: ShadowRoot) {
   const addArea = shadow.getElementById('add-area') as HTMLElement;
   const settingsArea = shadow.getElementById('settings-area') as HTMLElement;
   const inputTitle = shadow.getElementById('input-title') as HTMLInputElement;
+  const inputQuick = shadow.getElementById('input-quick') as HTMLInputElement;
   const inputBody = shadow.getElementById('input-body') as HTMLTextAreaElement;
   const addBtn = shadow.getElementById('add-btn') as HTMLButtonElement;
   const saveBtn = shadow.getElementById('save-btn') as HTMLButtonElement;
@@ -247,6 +182,7 @@ async function renderUI(host: HTMLElement, shadow: ShadowRoot) {
   const closeBtn = shadow.getElementById('close-btn') as HTMLButtonElement;
   const settingsBtn = shadow.getElementById('settings-btn') as HTMLButtonElement;
   const toastEl = shadow.getElementById('toast') as HTMLElement;
+  const searchInput = shadow.getElementById('search-input') as HTMLInputElement;
 
   // settings inputs
   const sPopupH = shadow.getElementById('s-popup-height') as HTMLInputElement;
@@ -258,115 +194,123 @@ async function renderUI(host: HTMLElement, shadow: ShadowRoot) {
   const sSave = shadow.getElementById('s-save') as HTMLButtonElement;
   const sCancel = shadow.getElementById('s-cancel') as HTMLButtonElement;
 
-  function showPanel(){ panel.classList.add('open'); }
-  function hidePanel(){ if (!isAddingOrEditing) panel.classList.remove('open'); }
-  function togglePanel(){ panel.classList.toggle('open'); }
+  function showPanel() { panel.classList.add('open'); }
+  function hidePanel() { if (!isAddingOrEditing) panel.classList.remove('open'); }
+  function togglePanel() { panel.classList.toggle('open'); }
 
-  function showAddArea(prefTitle = '', prefBody = '') {
-    isAddingOrEditing = true; editingId = null; inputTitle.value = prefTitle; inputBody.value = prefBody;
-    addArea.classList.add('open'); addArea.setAttribute('aria-hidden','false'); list.style.display='none'; settingsArea.classList.remove('open');
+  function showAddArea(prefillTitle = '', prefillQuick = '', prefillBody = '') {
+    isAddingOrEditing = true; editingId = null;
+    inputTitle.value = prefillTitle; inputQuick.value = prefillQuick; inputBody.value = prefillBody;
+    addArea.classList.add('open'); addArea.setAttribute('aria-hidden', 'false'); list.style.display = 'none'; settingsArea.classList.remove('open');
   }
-  function hideAddArea(){ isAddingOrEditing = false; editingId = null; addArea.classList.remove('open'); addArea.setAttribute('aria-hidden','true'); list.style.display='block'; inputTitle.value=''; inputBody.value=''; }
+  function hideAddArea() {
+    isAddingOrEditing = false; editingId = null;
+    addArea.classList.remove('open'); addArea.setAttribute('aria-hidden', 'true'); list.style.display = 'block';
+    inputTitle.value = ''; inputBody.value = ''; inputQuick.value = '';
+  }
 
-  function showSettingsArea(){
-    settingsArea.classList.add('open'); settingsArea.setAttribute('aria-hidden','false');
+  function showSettingsArea() {
+    settingsArea.classList.add('open'); settingsArea.setAttribute('aria-hidden', 'false');
     sPopupH.value = String(settings.popupHeightVh);
     sPopupW.value = String(settings.popupWidthPx);
     sFont.value = settings.fontFamily;
     sTheme.value = settings.theme;
     sHotpos.value = settings.hotspotPosition;
     sHotw.value = String(settings.hotspotWidthPx);
-    list.style.display='none'; addArea.classList.remove('open');
+    list.style.display = 'none'; addArea.classList.remove('open');
   }
-  function hideSettingsArea(){ settingsArea.classList.remove('open'); settingsArea.setAttribute('aria-hidden','true'); list.style.display='block'; }
+  function hideSettingsArea() { settingsArea.classList.remove('open'); settingsArea.setAttribute('aria-hidden', 'true'); list.style.display = 'block'; }
 
-  function showToast(msg: string){ toastEl.textContent = msg; toastEl.classList.add('show'); setTimeout(()=>toastEl.classList.remove('show'),1400); }
+  function showToast(msg: string) { toastEl.textContent = msg; toastEl.classList.add('show'); setTimeout(() => toastEl.classList.remove('show'), 1400); }
 
-  // placeholder for between-drop
   let placeholder: HTMLElement | null = null;
-  function ensurePlaceholder(){
-    if (placeholder) return placeholder;
-    placeholder = document.createElement('div'); placeholder.className = 'placeholder'; return placeholder;
+  function ensurePlaceholder() { if (placeholder) return placeholder; placeholder = document.createElement('div'); placeholder.className = 'placeholder'; return placeholder; }
+  function removePlaceholder() { if (!placeholder) return; if (placeholder.parentElement) placeholder.parentElement.removeChild(placeholder); placeholder = null; }
+
+  function filterPrompts(q: string) {
+    const s = q.trim().toLowerCase();
+    if (!s) return prompts;
+    return prompts.filter(p => (p.title && p.title.toLowerCase().includes(s)) || (p.quick && p.quick.toLowerCase().includes(s)));
   }
-  function removePlaceholder(){ if (!placeholder) return; if (placeholder.parentElement) placeholder.parentElement.removeChild(placeholder); placeholder = null; }
 
   function buildList() {
+    const q = (searchInput?.value || '').trim();
+    const items = filterPrompts(q);
     list.innerHTML = '';
-    if (!prompts.length) { const e = document.createElement('div'); e.className = 'empty'; e.textContent = 'No prompts yet. Click Add to create one.'; list.appendChild(e); return; }
+    if (!items.length) {
+      const e = document.createElement('div'); e.className = 'empty'; e.textContent = 'No prompts (or none match your search).'; list.appendChild(e); return;
+    }
 
-    for (const p of prompts) {
-      const row = document.createElement('div'); row.className = 'row'; row.dataset.id = p.id;
+    for (const p of items) {
+      const row = document.createElement('div'); row.className = 'row'; if (!p.quick) row.classList.add('heading-row'); row.dataset.id = p.id;
       const left = document.createElement('div'); left.className = 'left';
       const handle = document.createElement('div'); handle.className = 'drag-handle'; handle.innerHTML = '&#x2261;'; handle.draggable = true;
       const label = document.createElement('div'); label.className = 'label'; label.textContent = p.title;
+      // clicking title copies full prompt to clipboard
       label.addEventListener('click', async () => { try { await navigator.clipboard.writeText(p.text); showToast('Copied'); } catch { showToast('Copy failed'); }});
       left.appendChild(handle); left.appendChild(label);
 
       const icons = document.createElement('div'); icons.className = 'icons';
       const editBtn = document.createElement('button'); editBtn.className = 'icon-btn'; editBtn.textContent = '✎';
-      editBtn.addEventListener('click', (e) => { e.stopPropagation(); editingId = p.id; showAddArea(p.title, p.text); });
+      editBtn.addEventListener('click', (e) => { e.stopPropagation(); editingId = p.id; showAddArea(p.title, p.quick || '', p.text); });
       const delBtn = document.createElement('button'); delBtn.className = 'icon-btn'; delBtn.textContent = '🗑';
-      delBtn.addEventListener('click', (e) => { e.stopPropagation(); if (confirm('Delete this prompt?')) { prompts = prompts.filter(x=>x.id!==p.id); setStorage({ [PROMPTS_KEY]: prompts }).then(()=>{ buildList(); showToast('Deleted'); }).catch(()=>showToast('Delete failed')); }});
+      delBtn.addEventListener('click', (e) => { e.stopPropagation(); if (confirm('Delete this prompt?')) { prompts = prompts.filter(x => x.id !== p.id); setStorage({ [PROMPTS_KEY]: prompts }).then(()=>{ buildList(); showToast('Deleted'); }); }});
       icons.appendChild(editBtn); icons.appendChild(delBtn);
 
-      row.appendChild(left); row.appendChild(icons); list.appendChild(row);
+      row.appendChild(left); row.appendChild(icons);
+      list.appendChild(row);
 
-      // drag from handle only
       handle.addEventListener('dragstart', (ev) => { draggedId = p.id; row.classList.add('dragging'); try { ev.dataTransfer?.setData('text/plain', p.id); } catch {} });
-      handle.addEventListener('dragend', () => { draggedId = null; shadow.querySelectorAll('.row.dragging').forEach(el=>el.classList.remove('dragging')); removePlaceholder(); });
+      handle.addEventListener('dragend', () => { draggedId = null; shadow.querySelectorAll('.row.dragging').forEach(el => el.classList.remove('dragging')); removePlaceholder(); });
 
-      // no reorder on drop-on-row; we only reorder between rows
-      row.addEventListener('dragover', (ev)=>{ ev.preventDefault(); });
-      row.addEventListener('drop', (ev)=>{ ev.preventDefault(); removePlaceholder(); });
+      row.addEventListener('dragover', (ev) => { ev.preventDefault(); });
+      row.addEventListener('drop', (ev) => { ev.preventDefault(); removePlaceholder(); });
     }
 
-    // spacer for end
-    const endSpacer = document.createElement('div'); endSpacer.style.minHeight='12px';
-    endSpacer.addEventListener('dragover', (ev)=>{ ev.preventDefault(); const ph = ensurePlaceholder(); if (list.lastElementChild !== ph) list.appendChild(ph); });
-    endSpacer.addEventListener('drop', (ev)=>{ ev.preventDefault(); const srcId = draggedId ?? ev.dataTransfer?.getData('text/plain') ?? null; if (!srcId) return; const before = getRectsMap(shadow); movePromptToIndex(srcId, prompts.length - 1, before); removePlaceholder(); });
+    const endSpacer = document.createElement('div'); endSpacer.style.minHeight = '12px';
+    endSpacer.addEventListener('dragover', (ev) => { ev.preventDefault(); const ph = ensurePlaceholder(); if (list.lastElementChild !== ph) list.appendChild(ph); });
+    endSpacer.addEventListener('drop', (ev) => { ev.preventDefault(); const srcId = draggedId ?? ev.dataTransfer?.getData('text/plain') ?? null; if (!srcId) return; const before = getRectsMap(shadow); movePromptToIndex(srcId, prompts.length - 1, before); removePlaceholder(); });
     list.appendChild(endSpacer);
 
-    // global list dragover computes between index
-    list.addEventListener('dragover', (ev)=>{
+    list.addEventListener('dragover', (ev) => {
       ev.preventDefault();
       const ph = ensurePlaceholder();
       const rows = Array.from(list.querySelectorAll<HTMLElement>('.row'));
       let inserted = false;
-      for (let i=0;i<rows.length;i++){
+      for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
         const rect = r.getBoundingClientRect();
-        const mid = rect.top + rect.height/2;
+        const mid = rect.top + rect.height / 2;
         if (ev.clientY < mid) { if (r.parentElement && r.parentElement.querySelector('.placeholder') !== r) list.insertBefore(ph, r); inserted = true; break; }
       }
       if (!inserted) { const end = list.lastElementChild!; if (end && end !== ph) list.insertBefore(ph, end); }
     });
 
-    list.addEventListener('drop', (ev)=> {
+    list.addEventListener('drop', (ev) => {
       ev.preventDefault();
       const srcId = draggedId ?? ev.dataTransfer?.getData('text/plain') ?? null;
       if (!srcId) { removePlaceholder(); return; }
       const ph = list.querySelector('.placeholder');
-      if (!ph) { removePlaceholder(); return;}
+      if (!ph) { removePlaceholder(); return; }
       const children = Array.from(list.children);
       const idx = children.indexOf(ph);
       let targetIndex = 0;
-      for (let i=0;i<idx;i++){ if ((children[i] as HTMLElement).classList.contains('row')) targetIndex++; }
+      for (let i = 0; i < idx; i++) { if ((children[i] as HTMLElement).classList.contains('row')) targetIndex++; }
       const before = getRectsMap(shadow);
       movePromptToIndex(srcId, targetIndex, before);
       removePlaceholder();
     });
   }
 
-  function movePromptToIndex(srcId:string, targetIndex:number, beforeRects?: Map<string,DOMRect>){
-    const srcIndex = prompts.findIndex(x=>x.id===srcId);
-    if (srcIndex===-1) return;
-    const [item] = prompts.splice(srcIndex,1);
-    const insertAt = srcIndex < targetIndex ? targetIndex : targetIndex;
-    prompts.splice(insertAt,0,item);
-    setStorage({ [PROMPTS_KEY]: prompts }).then(()=>{ buildAndAnimate(beforeRects); showToast('Order saved'); }).catch(()=>showToast('Save failed'));
+  function movePromptToIndex(srcId: string, targetIndex: number, beforeRects?: Map<string, DOMRect>) {
+    const srcIndex = prompts.findIndex(x => x.id === srcId);
+    if (srcIndex === -1) return;
+    const [item] = prompts.splice(srcIndex, 1);
+    prompts.splice(targetIndex, 0, item);
+    setStorage({ [PROMPTS_KEY]: prompts }).then(() => { buildAndAnimate(beforeRects); showToast('Order saved'); });
   }
 
-  function buildAndAnimate(before?: Map<string,DOMRect>){
+  function buildAndAnimate(before?: Map<string, DOMRect>) {
     buildList();
     if (before) playFLIP(shadow, before);
   }
@@ -375,52 +319,85 @@ async function renderUI(host: HTMLElement, shadow: ShadowRoot) {
   buildList();
 
   /* events */
-  hotzone.addEventListener('mouseenter', ()=>showPanel());
-  panel.addEventListener('mouseleave', ()=>hidePanel());
-  addBtn.addEventListener('click', ()=>{ showAddArea(); settingsArea.classList.remove('open'); });
-  closeBtn.addEventListener('click', ()=>panel.classList.remove('open'));
-  cancelBtn.addEventListener('click', ()=>hideAddArea());
+  hotzone.addEventListener('mouseenter', () => showPanel());
+  panel.addEventListener('mouseleave', () => { if (!isAddingOrEditing) panel.classList.remove('open'); });
+  addBtn.addEventListener('click', () => { showAddArea(); settingsArea.classList.remove('open'); });
+  closeBtn.addEventListener('click', () => panel.classList.remove('open'));
+  cancelBtn.addEventListener('click', () => hideAddArea());
 
-  saveBtn.addEventListener('click', async ()=>{
+  saveBtn.addEventListener('click', async () => {
     const title = inputTitle.value.trim();
+    const quick = inputQuick.value.trim();
     const text = inputBody.value.trim();
     if (!title || !text) { alert('Both title and prompt are required'); return; }
     if (editingId) {
-      const idx = prompts.findIndex(x=>x.id===editingId);
-      if (idx!==-1) prompts[idx] = { ...prompts[idx], title, text };
+      const idx = prompts.findIndex(x => x.id === editingId);
+      if (idx !== -1) prompts[idx] = { ...prompts[idx], title, quick, text };
     } else {
-      const newPrompt: Prompt = { id: uid(), title, text };
+      const newPrompt: Prompt = { id: uid(), title, quick, text };
       prompts.unshift(newPrompt);
     }
     try { await setStorage({ [PROMPTS_KEY]: prompts }); buildList(); hideAddArea(); showToast('Saved'); } catch { showToast('Save failed'); }
   });
 
   // settings handlers
-  settingsBtn.addEventListener('click', ()=>{ if (settingsArea.classList.contains('open')) hideSettingsArea(); else showSettingsArea(); });
-  sCancel.addEventListener('click', ()=>hideSettingsArea());
-  sSave.addEventListener('click', async ()=>{
+  settingsBtn.addEventListener('click', () => { if (settingsArea.classList.contains('open')) hideSettingsArea(); else showSettingsArea(); });
+  sCancel.addEventListener('click', () => hideSettingsArea());
+  sSave.addEventListener('click', async () => {
     const newS: Settings = {
       popupHeightVh: Number(sPopupH.value) || settings.popupHeightVh,
       popupWidthPx: Number(sPopupW.value) || settings.popupWidthPx,
       fontFamily: sFont.value || settings.fontFamily,
-      theme: (sTheme.value as 'light'|'dark') || settings.theme,
-      hotspotPosition: (sHotpos.value as 'corner'|'edge') || settings.hotspotPosition,
+      theme: (sTheme.value as 'light' | 'dark') || settings.theme,
+      hotspotPosition: (sHotpos.value as 'corner' | 'edge') || settings.hotspotPosition,
       hotspotWidthPx: Number(sHotw.value) || settings.hotspotWidthPx
     };
     settings = newS; applySettingsToHost(host, settings);
     try { await setStorage({ [SETTINGS_KEY]: settings }); hideSettingsArea(); showToast('Settings saved'); } catch { showToast('Save failed'); }
   });
 
-  // background message toggles (Alt+P)
-  chrome.runtime.onMessage.addListener((msg:any)=>{ if (msg?.type==='TOGGLE_POPUP') togglePanel(); });
+  // Focus search input when showing panel via Alt+P (message source 'keyboard')
+  chrome.runtime.onMessage.addListener((msg: any) => {
+    if (msg?.type === 'TOGGLE_POPUP') {
+      const origin = msg.source || '';
+      if (!panel.classList.contains('open')) {
+        showPanel();
+        // small delay so element is visible then focus
+        setTimeout(() => searchInput?.focus(), 60);
+      } else {
+        hidePanel();
+      }
+    }
+  });
+
+  // If the user resizes the panel (resize:both), save new size on mouseup
+  panel.addEventListener('mouseup', async () => {
+    // read px width and convert height px -> vh
+    const w = panel.offsetWidth;
+    const hPx = panel.offsetHeight;
+    const vh = Math.round((hPx / window.innerHeight) * 100);
+    settings.popupWidthPx = w;
+    settings.popupHeightVh = vh;
+    applySettingsToHost(host, settings);
+    await setStorage({ [SETTINGS_KEY]: settings });
+  });
+
+  // search filtering live
+  searchInput.addEventListener('input', () => buildList());
+
+  // initial focus behavior if panel is opened by hover
+  searchInput.addEventListener('keydown', (ev) => {
+    // allow keyboard navigation later (arrow up/down), for MVP we just let typing
+  });
 }
 
 /* initialization */
-async function loadAndInit(){
-  try { const p = await getStorage<Prompt[]>(PROMPTS_KEY); prompts = Array.isArray(p)? p : []; } catch { prompts = []; }
+async function loadAndInit() {
+  try { const p = await getStorage<Prompt[]>(PROMPTS_KEY); prompts = Array.isArray(p) ? p : []; } catch { prompts = []; }
   try { const s = await getStorage<Settings>(SETTINGS_KEY); settings = s ? s : DEFAULT_SETTINGS; } catch { settings = DEFAULT_SETTINGS; }
   const { host, shadow } = createOrGetHost();
   applySettingsToHost(host, settings);
   await renderUI(host, shadow);
 }
-if (document.readyState==='loading') { document.addEventListener('DOMContentLoaded', ()=>loadAndInit().catch(console.error), { once:true }); } else { loadAndInit().catch(console.error); }
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => loadAndInit().catch(console.error), { once: true });
+else loadAndInit().catch(console.error);

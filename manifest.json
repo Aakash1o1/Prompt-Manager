@@ -1,24 +1,39 @@
 {
   "manifest_version": 3,
   "name": "Prompt Manager",
-  "version": "1.0",
-  "description": "Manage and quickly copy prompts",
-  "permissions": ["storage", "clipboardWrite", "activeTab", "tabs"],
-  "action": { "default_title": "Prompt Manager" },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["dist/content.js"],
-      "run_at": "document_idle"
-    }
+  "version": "1.0.0",
+  "description": "Manage and quickly paste/copy prompts (whitelisted hosts only).",
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab",
+    "tabs",
+    "commands"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
   ],
   "background": {
     "service_worker": "dist/background.js"
   },
+  "options_ui": {
+    "page": "dist/options.html",
+    "open_in_tab": true
+  },
   "commands": {
     "open-prompt-drawer": {
       "suggested_key": { "default": "Alt+P" },
-      "description": "Toggle prompt popup"
+      "description": "Open prompt popup"
     }
-  }
+  },
+  "action": {
+    "default_title": "Prompt Manager"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["dist/content.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

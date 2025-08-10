@@ -3,15 +3,16 @@
   "version": "1.0.0",
   "private": true,
   "devDependencies": {
-    "esbuild": "^0.18.0",
-    "typescript": "^5.0.0",
-    "@types/chrome": "^0.0.157"
+    "@types/chrome": "^0.0.157",
+    "esbuild": "^0.18.20",
+    "typescript": "^5.0.0"
   },
   "scripts": {
-    "build": "npm run build:all",
     "build:all": "npm run build:content && npm run build:background",
-    "build:content": "esbuild src/content.ts --bundle --platform=browser --target=es2019 --outfile=dist/content.js",
-    "build:background": "esbuild src/background.ts --bundle --platform=browser --target=es2019 --outfile=dist/background.js",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "build:content": "esbuild src/content.ts --bundle --platform=browser --outfile=dist/content.js",
+    "build:background": "esbuild src/background.ts --bundle --platform=browser --outfile=dist/background.js",
+    "build:options": "esbuild src/options.ts --bundle --platform=browser --outfile=dist/options.js && cp src/options.html dist/options.html",
+    "build": "npm run build:content && npm run build:background && npm run build:options"
   }
 }
