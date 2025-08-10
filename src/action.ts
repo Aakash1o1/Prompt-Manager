@@ -1,3 +1,6 @@
+export {};
+
+
 // src/action.ts
 const HOST_INPUT = 'host';
 const BTN = 'enable';

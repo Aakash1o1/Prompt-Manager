@@ -1,3 +1,6 @@
+export {};
+
+
 // src/options.ts
 const INPUT_ID = 'new-host';
 const REQ_BTN = 'request-btn';
