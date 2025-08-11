@@ -47,10 +47,10 @@ function escapeHtml(s) {
         .replace(/'/g, '&#39;');
 }
 /**
- * Storage helpers using chrome.storage.sync
+ * Storage helpers using chrome.storage.local
  */
 function loadPrompts() {
-    chrome.storage.sync.get(['prompts'], (data) => {
+    chrome.storage.local.get(['prompts'], (data) => {
         var _a;
         prompts = (_a = data === null || data === void 0 ? void 0 : data.prompts) !== null && _a !== void 0 ? _a : [];
         renderList();

@@ -274,9 +274,9 @@ export async function renderUI(opts: {
   // live search
   searchInput.addEventListener('input', () => buildList());
 
-  // listen for storage changes to sync across tabs
+  // listen for storage changes to local across tabs
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'sync') return;
+    if (area !== 'local') return;
     if (changes[PROMPTS_KEY]) {
       prompts = changes[PROMPTS_KEY].newValue ?? [];
       buildList();

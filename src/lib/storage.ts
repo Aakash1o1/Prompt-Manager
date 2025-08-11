@@ -4,7 +4,7 @@
 export async function getStorage<T = any>(key: string): Promise<T | undefined> {
   return new Promise((res, rej) => {
     try {
-      chrome.storage.sync.get([key], (result) => {
+      chrome.storage.local.get([key], (result) => {
         if (chrome.runtime.lastError) {
           rej(chrome.runtime.lastError);
         } else {
