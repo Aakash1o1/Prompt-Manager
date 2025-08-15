@@ -15,10 +15,10 @@ function setStatus(msg: string) {
 function normalize(s: string) { return s.trim(); }
 
 async function getHosts(): Promise<string[]> {
-  return new Promise((res) => chrome.storage.sync.get([STORAGE_KEY], (r) => res(r[STORAGE_KEY] ?? [])));
+  return new Promise((res) => chrome.storage.local.get([STORAGE_KEY], (r) => res(r[STORAGE_KEY] ?? [])));
 }
 async function setHosts(hs: string[]) {
-  return new Promise<void>((res) => chrome.storage.sync.set({ [STORAGE_KEY]: hs }, () => res()));
+  return new Promise<void>((res) => chrome.storage.local.set({ [STORAGE_KEY]: hs }, () => res()));
 }
 
 document.addEventListener('DOMContentLoaded', () => {

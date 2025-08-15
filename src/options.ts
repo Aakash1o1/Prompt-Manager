@@ -8,10 +8,10 @@ const LIST_ID = 'hosts-list';
 const STORAGE_KEY = 'promptManager.allowedHosts';
 
 async function getHosts(): Promise<string[]> {
-  return new Promise((res) => chrome.storage.sync.get([STORAGE_KEY], (r) => res(r[STORAGE_KEY] ?? [])));
+  return new Promise((res) => chrome.storage.local.get([STORAGE_KEY], (r) => res(r[STORAGE_KEY] ?? [])));
 }
 async function setHosts(hosts: string[]) {
-  return new Promise<void>((res) => chrome.storage.sync.set({ [STORAGE_KEY]: hosts }, () => res()));
+  return new Promise<void>((res) => chrome.storage.local.set({ [STORAGE_KEY]: hosts }, () => res()));
 }
 
 function normalizePattern(s: string) {

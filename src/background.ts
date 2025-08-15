@@ -7,10 +7,10 @@ const PROMPTS_HOSTS_KEY = 'promptManager.allowedHosts';
 
 // Helper: read allowed hosts from storage
 function getAllowedHosts(): Promise<HostPattern[]> {
-  return new Promise((res) => chrome.storage.sync.get([PROMPTS_HOSTS_KEY], (r) => res(r[PROMPTS_HOSTS_KEY] ?? [])));
+  return new Promise((res) => chrome.storage.local.get([PROMPTS_HOSTS_KEY], (r) => res(r[PROMPTS_HOSTS_KEY] ?? [])));
 }
 function setAllowedHosts(hosts: HostPattern[]): Promise<void> {
-  return new Promise((res) => chrome.storage.sync.set({ [PROMPTS_HOSTS_KEY]: hosts }, () => res()));
+  return new Promise((res) => chrome.storage.local.set({ [PROMPTS_HOSTS_KEY]: hosts }, () => res()));
 }
 
 // Inject content script into a single tab (if not already present)

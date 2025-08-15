@@ -57,7 +57,7 @@ function loadPrompts() {
     });
 }
 function savePrompts() {
-    chrome.storage.sync.set({ prompts });
+    chrome.storage.local.set({ prompts });
 }
 /**
  * Show/Hide popup: instant show on hotzone hover

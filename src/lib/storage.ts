@@ -20,7 +20,7 @@ export async function getStorage<T = any>(key: string): Promise<T | undefined> {
 export async function setStorage(obj: Record<string, any>): Promise<void> {
   return new Promise((res, rej) => {
     try {
-      chrome.storage.sync.set(obj, () => {
+      chrome.storage.local.set(obj, () => {
         if (chrome.runtime.lastError) {
           rej(chrome.runtime.lastError);
         } else {
