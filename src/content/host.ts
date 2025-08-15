@@ -88,11 +88,11 @@ export function createOrGetHost() {
         width: var(--hotspot-width);
         height: var(--popup-height);
         top: calc(50% - (var(--popup-height) / 2));
-        border-radius: 0;
+        border-radius: 4;
         writing-mode: vertical-rl;
         font-size: 13px;
         color: transparent; /* hide inner emoji/text */
-        background: linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.08) 40%, rgba(255,255,255,0.00) 100%);
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0.56) 40%, rgba(255, 255, 255, 0.56) 100%);
         backdrop-filter: blur(6px) saturate(120%); /* mist/blur */
         box-shadow: none;
       }
