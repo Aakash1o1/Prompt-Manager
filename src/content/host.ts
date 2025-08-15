@@ -1,4 +1,4 @@
-// src/content/host.ts
+// file: /home/auriga/Desktop/Projects/prompt manager/src/content/host.ts
 // Creates or returns the shadow host element and the shadow root.
 // Keeps markup and styles in one place.
 
@@ -52,13 +52,19 @@ export function createOrGetHost() {
       .toast.show { opacity:1; }
       .resize-handle { position: absolute; background: transparent; z-index:2147483652; }
       .panel::-webkit-scrollbar { display: none; }
+
+      /* NEW: selected row highlight */
+      .row.selected {
+        background: rgba(255,255,255,0.07);
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
+        transform: none;
+      }
     </style>
 
     <div class="hotzone" id="hotzone" title="Open Prompt Drawer">💬</div>
 
     <div class="panel" id="panel" role="dialog" aria-label="Prompt Drawer">
       <div class="header">
-        <div class="title">Prompt Drawer</div>
         <div class="search"><input id="search-input" type="text" placeholder="Search prompts or quick code (e.g. ../)..." /></div>
         <div class="controls">
           <button id="add-btn" class="ctrl-btn">Add</button>

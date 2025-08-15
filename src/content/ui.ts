@@ -1,4 +1,4 @@
-// src/content/ui.ts
+// file: /home/auriga/Desktop/Projects/prompt manager/src/content/ui.ts
 // Renders the UI into the provided host/shadow and wires events.
 // This file contains the core UI logic but delegates FLIP & resize helpers.
 
@@ -27,6 +27,10 @@ export async function renderUI(opts: {
   const { host, shadow, PROMPTS_KEY, SETTINGS_KEY } = opts;
   let prompts: Prompt[] = opts.prompts || [];
   let settings: Settings = opts.settings;
+
+  // --- NEW: Selection state ---
+  let selectedIndex = 0;
+  let filteredPrompts: Prompt[] = [];
 
   // grab elements
   const hotzone = shadow.getElementById('hotzone') as HTMLElement;
@@ -79,26 +83,78 @@ export async function renderUI(opts: {
   function ensurePlaceholder() { if (placeholder) return placeholder; placeholder = document.createElement('div'); placeholder.className = 'placeholder'; return placeholder; }
   function removePlaceholder() { if (!placeholder) return; if (placeholder.parentElement) placeholder.parentElement.removeChild(placeholder); placeholder = null; }
 
+  // MODIFIED: filterPrompts now also searches the body of the prompt
   function filterPrompts(q: string) {
     const s = q.trim().toLowerCase();
     if (!s) return prompts;
-    return prompts.filter(p => (p.title && p.title.toLowerCase().includes(s)) || (p.quick && p.quick.toLowerCase().includes(s)));
+    return prompts.filter(p =>
+        (p.title && p.title.toLowerCase().includes(s)) ||
+        (p.quick && p.quick.toLowerCase().includes(s)) ||
+        (p.text && p.text.toLowerCase().includes(s))
+    );
   }
 
+  // --- NEW: Selection helpers ---
+  function resetSelection() {
+    selectedIndex = 0;
+    highlightSelection();
+  }
+
+  function highlightSelection() {
+    // Clear all highlights
+    list.querySelectorAll('.row').forEach(el => el.classList.remove('selected'));
+    // Highlight selected if valid
+    if (filteredPrompts.length > 0 && selectedIndex >= 0 && selectedIndex < filteredPrompts.length) {
+      const selId = filteredPrompts[selectedIndex].id;
+      const selEl = list.querySelector<HTMLElement>(`.row[data-id="${selId}"]`);
+      if (selEl) {
+        selEl.classList.add('selected');
+        // keep selected in view
+        try { selEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch { selEl.scrollIntoView(false); }
+      }
+    }
+  }
+
+  // copy with fallback (kept from original for robustness)
+  async function copyToClipboard(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (_) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        const prevActive = document.activeElement as HTMLElement | null;
+        ta.focus();
+        ta.select();
+        const ok = document.execCommand('copy');
+        ta.remove();
+        prevActive?.focus();
+        return Boolean(ok);
+      } catch (e) {
+        return false;
+      }
+    }
+  }
+
+  // MODIFIED: buildList now populates the filteredPrompts array and resets selection
   function buildList() {
     const q = (searchInput?.value || '').trim();
-    const items = filterPrompts(q);
+    filteredPrompts = filterPrompts(q); // Store the filtered list
     list.innerHTML = '';
-    if (!items.length) {
+    if (!filteredPrompts.length) {
       const e = document.createElement('div'); e.className = 'empty'; e.textContent = 'No prompts (or none match your search).'; list.appendChild(e); return;
     }
 
-    for (const p of items) {
+    for (const p of filteredPrompts) { // Iterate over the new filteredPrompts array
       const row = document.createElement('div'); row.className = 'row'; if (!p.quick) row.classList.add('heading-row'); row.dataset.id = p.id;
       const left = document.createElement('div'); left.className = 'left';
       const handle = document.createElement('div'); handle.className = 'drag-handle'; handle.innerHTML = '&#x2261;'; handle.draggable = true;
       const label = document.createElement('div'); label.className = 'label'; label.textContent = p.title;
-      label.addEventListener('click', async (ev) => { ev.stopPropagation(); try { await navigator.clipboard.writeText(p.text); showToast('Copied'); } catch { showToast('Copy failed'); }});
+      label.addEventListener('click', async (ev) => { ev.stopPropagation(); try { await copyToClipboard(p.text); showToast('Copied'); } catch { showToast('Copy failed'); }});
       left.appendChild(handle); left.appendChild(label);
 
       const icons = document.createElement('div'); icons.className = 'icons';
@@ -124,7 +180,6 @@ export async function renderUI(opts: {
     endSpacer.addEventListener('drop', (ev) => { ev.preventDefault(); const srcId = draggedId ?? ev.dataTransfer?.getData('text/plain') ?? null; if (!srcId) return; const before = getRectsMap(shadow); movePromptToIndex(srcId, prompts.length - 1, before); removePlaceholder(); });
     list.appendChild(endSpacer);
 
-    // list-level dragover/drop to place placeholder
     list.addEventListener('dragover', (ev) => {
       ev.preventDefault();
       const ph = ensurePlaceholder();
@@ -153,6 +208,9 @@ export async function renderUI(opts: {
       movePromptToIndex(srcId, targetIndex, before);
       removePlaceholder();
     });
+
+    // after building, reset selection to top
+    resetSelection();
   }
 
   function movePromptToIndex(srcId: string, targetIndex: number, beforeRects?: Map<string, DOMRect>) {
@@ -173,7 +231,11 @@ export async function renderUI(opts: {
 
   /* UI events */
   hotzone.addEventListener('mouseenter', () => showPanel());
-  addBtn.addEventListener('click', () => { showAddArea(); settingsArea.classList.remove('open'); });
+  addBtn.addEventListener('click', () => {
+    editingId = null;
+    showAddArea();
+    settingsArea.classList.remove('open');
+  });
   closeBtn.addEventListener('click', () => panel.classList.remove('open'));
   cancelBtn.addEventListener('click', () => hideAddArea());
 
@@ -182,7 +244,7 @@ export async function renderUI(opts: {
     const quick = inputQuick.value.trim();
     const text = inputBody.value.trim();
     if (!title || !text) { alert('Both title and prompt are required'); return; }
-    if (editingId) {
+    if (editingId != null) {
       const idx = prompts.findIndex(x => x.id === editingId);
       if (idx !== -1) prompts[idx] = { ...prompts[idx], title, quick, text };
     } else {
@@ -208,10 +270,10 @@ export async function renderUI(opts: {
   });
 
   // show/hide add/settings helpers
-  function showPanel() { panel.classList.add('open'); }
+  function showPanel() { panel.classList.add('open'); resetSelection(); }
   function hidePanel() { if (!isAddingOrEditing) panel.classList.remove('open'); }
   function showAddArea(prefillTitle = '', prefillQuick = '', prefillBody = '') {
-    isAddingOrEditing = true; editingId = null;
+    isAddingOrEditing = true;
     inputTitle.value = prefillTitle; inputQuick.value = prefillQuick; inputBody.value = prefillBody;
     addArea.classList.add('open'); addArea.setAttribute('aria-hidden', 'false'); list.style.display = 'none'; settingsArea.classList.remove('open');
   }
@@ -248,19 +310,23 @@ export async function renderUI(opts: {
       pendingHideTimer = null;
     }, 120);
   });
-  panel.addEventListener('mouseenter', () => { if (pendingHideTimer) { window.clearTimeout(pendingHideTimer); pendingHideTimer = null; } });
+  panel.addEventListener('mouseenter', () => {
+    if (pendingHideTimer) {
+      window.clearTimeout(pendingHideTimer);
+      pendingHideTimer = null;
+      resetSelection();
+    }
+  });
 
   function isPointInsideExtendedRect(x: number, y: number, rect: DOMRect, tol: number) {
     return x >= (rect.left - tol) && x <= (rect.right + tol) && y >= (rect.top - tol) && y <= (rect.bottom + tol);
   }
 
-  // stop propagation for interactive areas (prevents site handlers from swallowing clicks)
   [addArea, settingsArea, panel].forEach((el) => {
     el?.addEventListener('click', (ev) => ev.stopPropagation());
     el?.addEventListener('pointerdown', (ev) => ev.stopPropagation());
   });
 
-  // save size after native resize
   panel.addEventListener('mouseup', async () => {
     const w = panel.offsetWidth;
     const hPx = panel.offsetHeight;
@@ -273,6 +339,39 @@ export async function renderUI(opts: {
 
   // live search
   searchInput.addEventListener('input', () => buildList());
+
+  // --- REPLACED: New keyboard handling ---
+  document.addEventListener('keydown', async (ev) => {
+    if (!panel.classList.contains('open')) return;
+
+    if (ev.key === 'ArrowDown') {
+      ev.preventDefault();
+      if (filteredPrompts.length > 0) {
+        selectedIndex = (selectedIndex + 1) % filteredPrompts.length;
+        highlightSelection();
+      }
+    } else if (ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      if (filteredPrompts.length > 0) {
+        selectedIndex = (selectedIndex - 1 + filteredPrompts.length) % filteredPrompts.length;
+        highlightSelection();
+      }
+    } else if (ev.key === 'Enter') {
+      // Do not interfere with Enter when in a textarea (e.g., add/edit area)
+      if (document.activeElement && (document.activeElement as HTMLElement).tagName === 'TEXTAREA') return;
+      ev.preventDefault();
+      
+      if (filteredPrompts.length === 0 || !filteredPrompts[selectedIndex]) {
+        showToast('No prompt selected.');
+        return;
+      }
+      const prompt = filteredPrompts[selectedIndex];
+      const ok = await copyToClipboard(prompt.text);
+      showToast(ok ? 'Copied' : 'Copy failed');
+    } else if (ev.key === 'Escape' && !isAddingOrEditing) {
+      panel.classList.remove('open');
+    }
+  });
 
   // listen for storage changes to local across tabs
   chrome.storage.onChanged.addListener((changes, area) => {
@@ -299,18 +398,8 @@ export async function renderUI(opts: {
     }
   });
 
-  // resize handles — uses external helper which wires events and persists changes
+  // resize handles
   setupResizeHandles({ panel, shadow, host, getSettings: () => settings, saveSettings: async (s: Settings) => { settings = s; applySettingsToHost(); await setStorage({ [SETTINGS_KEY]: settings }); } });
-
-  // global outside-click handling — close when user clicks outside (respects tolerance)
-  function isNodeInsidePanel(node: EventTarget | null) {
-    if (!node) return false;
-    try {
-      const path = (node as any)?.composedPath?.();
-      if (Array.isArray(path)) return path.includes(panel) || path.includes(host);
-    } catch {}
-    return false;
-  }
 
   document.addEventListener('mousedown', (ev) => {
     if (!panel.classList.contains('open')) return;
@@ -321,21 +410,13 @@ export async function renderUI(opts: {
     if (!isAddingOrEditing) panel.classList.remove('open');
   });
 
-  // close on blur or escape
+  // close on blur
   window.addEventListener('blur', () => { if (!isAddingOrEditing) panel.classList.remove('open'); });
-  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && panel.classList.contains('open') && !isAddingOrEditing) panel.classList.remove('open'); });
 
-  // helper functions used by drag & drop to animate moves
-  function getRectsMapLocal() {
-    return getRectsMap(shadow);
-  }
-  function playFLIPLocal(before: Map<string, DOMRect>) {
-    playFLIP(shadow, before);
-  }
+  function getRectsMapLocal() { return getRectsMap(shadow); }
+  function playFLIPLocal(before: Map<string, DOMRect>) { playFLIP(shadow, before); }
 
-  // Expose a couple helpers to the window for quick debugging (optional)
   (window as any).__promptManager = { rebuild: buildList, getState: () => ({ prompts, settings }) };
 
-  // small helper to build list initially
   buildList();
 }
