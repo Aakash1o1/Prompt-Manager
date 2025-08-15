@@ -55,7 +55,7 @@
   justify-content: space-between;
   padding: 8px 6px;
   border-bottom: 1px solid #f3f3f3;
-  min-height: 44px;
+  min-height: 20px;
 }
 .pm-title {
   flex: 1;

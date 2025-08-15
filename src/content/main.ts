@@ -17,12 +17,12 @@ const PROMPTS_KEY = 'promptManager.prompts';
 const SETTINGS_KEY = 'promptManager.settings';
 
 const DEFAULT_SETTINGS: Settings = {
-  popupHeightVh: 50,
-  popupWidthPx: 360,
-  fontFamily: 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial',
+  popupHeightVh: 56,
+  popupWidthPx: 280,
+  fontFamily: 'Arial, Helvetica, sans-serif',
   theme: 'dark',
   hotspotPosition: 'corner',
-  hotspotWidthPx: 28
+  hotspotWidthPx: 24
 };
 
 async function loadAndInit() {

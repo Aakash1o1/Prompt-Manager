@@ -49,14 +49,12 @@ export async function renderUI(opts: {
   const toastEl = shadow.getElementById('toast') as HTMLElement;
   const searchInput = shadow.getElementById('search-input') as HTMLInputElement;
 
-  const sPopupH = shadow.getElementById('s-popup-height') as HTMLInputElement;
-  const sPopupW = shadow.getElementById('s-popup-width') as HTMLInputElement;
-  const sFont = shadow.getElementById('s-font-family') as HTMLInputElement;
+  const sFontSize = shadow.getElementById('s-font-size') as HTMLInputElement;
   const sTheme = shadow.getElementById('s-theme') as HTMLSelectElement;
   const sHotpos = shadow.getElementById('s-hotspot-pos') as HTMLSelectElement;
-  const sHotw = shadow.getElementById('s-hotspot-width') as HTMLInputElement;
-  const sSave = shadow.getElementById('s-save') as HTMLButtonElement;
+  const sSave = shadow.getElementById('s-save') as HTMLButtonElement || shadow.getElementById('s-save') as any;
   const sCancel = shadow.getElementById('s-cancel') as HTMLButtonElement;
+
 
   let isAddingOrEditing = false;
   let editingId: string | null = null;
@@ -74,7 +72,12 @@ export async function renderUI(opts: {
     host.style.setProperty('--hotspot-width', `${settings.hotspotWidthPx}px`);
     host.setAttribute('data-hotspot-position', settings.hotspotPosition);
     host.setAttribute('data-theme', settings.theme);
+    // ensure font-size var exists (fallback 13px)
+    if (!host.style.getPropertyValue('--font-size')) host.style.setProperty('--font-size', '13px');
+    // apply to panel to be safe
+    try { (shadow.getElementById('panel') as HTMLElement).style.fontSize = host.style.getPropertyValue('--font-size') || '13px'; } catch {}
   }
+
 
   applySettingsToHost();
 
@@ -158,9 +161,11 @@ export async function renderUI(opts: {
       left.appendChild(handle); left.appendChild(label);
 
       const icons = document.createElement('div'); icons.className = 'icons';
-      const editBtn = document.createElement('button'); editBtn.className = 'icon-btn'; editBtn.textContent = '✎';
+      const editBtn = document.createElement('button'); editBtn.className = 'icon-btn';
+      editBtn.innerHTML = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M3 21v-3.6l11.2-11.2 3.6 3.6L6.6 21H3zM20.7 7.3a1 1 0 0 0 0-1.4l-2.6-2.6a1 1 0 0 0-1.4 0l-1.8 1.8 3.6 3.6 1.8-1.4z" stroke="currentColor" fill="none"/></svg>';
       editBtn.addEventListener('click', (e) => { e.stopPropagation(); editingId = p.id; showAddArea(p.title, p.quick || '', p.text); });
-      const delBtn = document.createElement('button'); delBtn.className = 'icon-btn'; delBtn.textContent = '🗑';
+      const delBtn = document.createElement('button'); delBtn.className = 'icon-btn';
+      delBtn.innerHTML = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M3 6h18M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6M10 6V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" fill="none"/></svg>';
       delBtn.addEventListener('click', (e) => { e.stopPropagation(); if (confirm('Delete this prompt?')) { prompts = prompts.filter(x => x.id !== p.id); setStorage({ [PROMPTS_KEY]: prompts }).then(()=>{ buildList(); showToast('Deleted'); }); }});
       icons.appendChild(editBtn); icons.appendChild(delBtn);
 
@@ -258,13 +263,20 @@ export async function renderUI(opts: {
   sCancel.addEventListener('click', () => hideSettingsArea());
   sSave.addEventListener('click', async () => {
     const newS: Settings = {
-      popupHeightVh: Number(sPopupH.value) || settings.popupHeightVh,
-      popupWidthPx: Number(sPopupW.value) || settings.popupWidthPx,
-      fontFamily: sFont.value || settings.fontFamily,
+      popupHeightVh: settings.popupHeightVh,
+      popupWidthPx: settings.popupWidthPx,
+      fontFamily: settings.fontFamily,
       theme: (sTheme.value as 'light' | 'dark') || settings.theme,
       hotspotPosition: (sHotpos.value as 'corner' | 'edge') || settings.hotspotPosition,
-      hotspotWidthPx: Number(sHotw.value) || settings.hotspotWidthPx
+      hotspotWidthPx: settings.hotspotWidthPx
     };
+    // apply simple font-size if provided
+    const fs = Number(sFontSize.value);
+    if (fs && !Number.isNaN(fs)) {
+      // set inline CSS var for font sizing inside host
+      host.style.setProperty('--font-size', `${fs}px`);
+      // apply to host styles (label/input font sizes will inherit)
+    }
     settings = newS; applySettingsToHost();
     try { await setStorage({ [SETTINGS_KEY]: settings }); hideSettingsArea(); showToast('Settings saved'); } catch { showToast('Save failed'); }
   });
@@ -274,25 +286,32 @@ export async function renderUI(opts: {
   function hidePanel() { if (!isAddingOrEditing) panel.classList.remove('open'); }
   function showAddArea(prefillTitle = '', prefillQuick = '', prefillBody = '') {
     isAddingOrEditing = true;
+    editingId = null;
     inputTitle.value = prefillTitle; inputQuick.value = prefillQuick; inputBody.value = prefillBody;
-    addArea.classList.add('open'); addArea.setAttribute('aria-hidden', 'false'); list.style.display = 'none'; settingsArea.classList.remove('open');
+    addArea.classList.add('open'); addArea.setAttribute('aria-hidden', 'false');
+    list.style.display = 'none'; settingsArea.classList.remove('open');
+    panel.classList.add('mode-add'); panel.classList.remove('mode-settings');
   }
+
+
   function hideAddArea() {
     isAddingOrEditing = false; editingId = null;
     addArea.classList.remove('open'); addArea.setAttribute('aria-hidden', 'true'); list.style.display = 'block';
     inputTitle.value = ''; inputBody.value = ''; inputQuick.value = '';
+    panel.classList.remove('mode-add');
   }
+  
   function showSettingsArea() {
     settingsArea.classList.add('open'); settingsArea.setAttribute('aria-hidden', 'false');
-    sPopupH.value = String(settings.popupHeightVh);
-    sPopupW.value = String(settings.popupWidthPx);
-    sFont.value = settings.fontFamily;
+    // populate our reduced settings:
+    sFontSize.value = String(parseInt(window.getComputedStyle(host).getPropertyValue('--font-size') || '13') || 13);
     sTheme.value = settings.theme;
     sHotpos.value = settings.hotspotPosition;
-    sHotw.value = String(settings.hotspotWidthPx);
     list.style.display = 'none'; addArea.classList.remove('open');
+    panel.classList.add('mode-settings'); panel.classList.remove('mode-add');
   }
-  function hideSettingsArea() { settingsArea.classList.remove('open'); settingsArea.setAttribute('aria-hidden', 'true'); list.style.display = 'block'; }
+  
+  function hideSettingsArea() { settingsArea.classList.remove('open'); settingsArea.setAttribute('aria-hidden', 'true'); list.style.display = 'block'; panel.classList.remove('mode-settings'); }
 
   // tolerant hide (10px tolerance)
   let lastMouse = { x: 0, y: 0 };
