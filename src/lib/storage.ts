@@ -1,5 +1,5 @@
 // src/lib/storage.ts
-// Small promise wrapper around chrome.storage.sync for get/set operations.
+// Small promise wrapper around chrome.storage.async for get/set operations.
 
 export async function getStorage<T = any>(key: string): Promise<T | undefined> {
   return new Promise((res, rej) => {

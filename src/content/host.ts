@@ -13,7 +13,7 @@ export function createOrGetHost() {
   Object.assign(host.style, { all: 'initial' });
   document.documentElement.appendChild(host);
 
-  const shadow = host.attachShadow({ mode: 'open' });
+  const shadow = host.attachShadow({ mode: 'closed' });
 
   shadow.innerHTML = `
     <style>

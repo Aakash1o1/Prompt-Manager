@@ -5,15 +5,17 @@
   "devDependencies": {
     "@types/chrome": "^0.0.157",
     "esbuild": "^0.18.20",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "rimraf": "^5.0.0",
+    "cpx": "^1.5.0"
   },
   "scripts": {
-    "build:all": "npm run build:content && npm run build:background && npm run build:options && npm run build:action",
-    "clean": "rm -rf dist",
+    "clean": "rimraf dist",
     "build:content": "esbuild src/content.ts --bundle --platform=browser --outfile=dist/content.js",
     "build:background": "esbuild src/background.ts --bundle --platform=browser --outfile=dist/background.js",
-    "build:options": "esbuild src/options.ts --bundle --platform=browser --outfile=dist/options.js && cp src/options.html dist/options.html",
-    "build:action": "esbuild src/action.ts --bundle --platform=browser --outfile=dist/action.js && cp src/action.html dist/action.html",
+    "build:options": "esbuild src/options.ts --bundle --platform=browser --outfile=dist/options.js && cpx \"src/options.html\" dist",
+    "build:action": "esbuild src/action.ts --bundle --platform=browser --outfile=dist/action.js && cpx \"src/action.html\" dist",
+    "build:all": "npm run build:content && npm run build:background && npm run build:options && npm run build:action",
     "build": "npm run clean && npm run build:all"
   }
 }
