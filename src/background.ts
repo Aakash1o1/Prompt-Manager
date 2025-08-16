@@ -1,5 +1,5 @@
-// src/background.ts
-// Background service worker: handles keyboard command and injection after host permission is granted.
+// file: /home/auriga/Desktop/Projects/prompt manager/src/background.ts
+// Background service worker: handles permission grants and injects content script into open tabs for allowed patterns.
 
 type HostPattern = string;
 
@@ -20,17 +20,13 @@ async function injectIntoTab(tabId: number) {
       target: { tabId },
       files: ['dist/content.js']
     });
-    // (Optionally) inject CSS if you have separate css file
-    // await chrome.scripting.insertCSS({ target: { tabId }, files: ['dist/content.css'] });
   } catch (e) {
-    // injecting failed (likely no permission)
     console.warn('Injection failed', e);
   }
 }
 
 // Inject into all open tabs matching originPrefix
 async function injectIntoOpenTabsForPattern(pattern: HostPattern) {
-  // compute origin prefix for a typical pattern like "https://example.com/*"
   const originPrefix = pattern.replace(/\*.*$/, '');
   const tabs = await chrome.tabs.query({});
   for (const t of tabs) {
@@ -41,36 +37,32 @@ async function injectIntoOpenTabsForPattern(pattern: HostPattern) {
   }
 }
 
-// Called when the user grants permission for pattern (from options page)
+// Called when the user grants permission for pattern (from options/page)
 async function onPermissionGrantedForPattern(pattern: HostPattern) {
-  // save to allowedHosts
+  // persist to allowedHosts list
   const hosts = await getAllowedHosts();
   if (!hosts.includes(pattern)) {
     hosts.push(pattern);
     await setAllowedHosts(hosts);
   }
 
-  // Ensure the permission actually exists before attempting injection.
-  // This guards against race conditions if the request callback ran in a closed popup.
+  // double-check permission exists (defensive)
   chrome.permissions.contains({ origins: [pattern] }, (has) => {
     if (has) {
-      // inject content script into existing open tabs for that pattern
-      injectIntoOpenTabsForPattern(pattern).catch((e) => console.warn('Injection failed after permission granted', e));
+      injectIntoOpenTabsForPattern(pattern).catch((e) => console.warn('Inject after permission granted failed', e));
     } else {
-      console.warn('Permission indicated for pattern but chrome.permissions.contains returned false:', pattern);
+      console.warn('Permission reported granted but chrome.permissions.contains returned false for:', pattern);
     }
   });
 }
 
-// Listen for messages from options page (to notify background to inject) or other parts
+// Message listener
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg?.type === 'PERMISSION_GRANTED') {
-    const pattern = msg.pattern as HostPattern;
-    onPermissionGrantedForPattern(pattern).catch((e) => console.error(e));
+  if (msg?.type === 'PERMISSION_GRANTED' && msg?.pattern) {
+    onPermissionGrantedForPattern(String(msg.pattern)).catch((e) => console.error(e));
     sendResponse({ ok: true });
     return true;
   } else if (msg?.type === 'INJECT_IF_MATCH') {
-    // message asks background to attempt injection in the provided tab (e.g., on tab update)
     const tabId = msg.tabId as number;
     injectIntoTab(tabId).then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
     return true;
@@ -107,10 +99,8 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   for (const p of hosts) {
     const originPrefix = p.replace(/\*.*$/, '');
     if (tab.url.startsWith(originPrefix)) {
-      // we have an allowed host pattern; check permission exists
       chrome.permissions.contains({ origins: [p] }, (has) => {
         if (has) {
-          // inject once the document is ready-ish
           injectIntoTab(tabId).catch((e) => console.warn(e));
         }
       });
@@ -119,25 +109,20 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   }
 });
 
-// On install / startup, attempt to inject into open tabs for all stored hosts (if permission still present)
+// On install/startup, attempt to inject into open tabs for stored hosts if permission still present
 chrome.runtime.onInstalled.addListener(async () => {
   const hosts = await getAllowedHosts();
   for (const p of hosts) {
-    // Only inject if permission still present
     chrome.permissions.contains({ origins: [p] }, (has) => {
       if (has) injectIntoOpenTabsForPattern(p).catch(console.error);
     });
   }
 });
 
-// Robustness: when permissions are added (anywhere), attempt to install content script
-// for those newly added origins. This handles the case where the popup closed and
-// the popup callback couldn't notify background.
+// When permissions are added (anywhere), attempt to install content script for those origins
 chrome.permissions.onAdded.addListener((perms) => {
   if (!perms || !perms.origins) return;
   for (const originPattern of perms.origins) {
-    // Call same handler used when the options page sends the PERMISSION_GRANTED message.
-    // This will update storage and attempt injection (onPermissionGrantedForPattern checks permission).
     onPermissionGrantedForPattern(originPattern).catch((e) => console.error('onAdded handler failed', e));
   }
 });

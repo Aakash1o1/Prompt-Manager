@@ -62,15 +62,19 @@ export async function renderUI(opts: {
   let placeholder: HTMLElement | null = null;
   const CLOSE_TOLERANCE_PX = 10;
 
-  function uid() { return Math.random().toString(36).slice(2, 9); }
+  function uid() { return (crypto as any).randomUUID?.() ?? Math.random().toString(36).slice(2, 9); }
+
+  // sanitize user input by stripping HTML tags — store and render only plain text
+  function stripHTMLTags(input: string) {
+    if (!input) return '';
+    return input.replace(/<\/?[^>]+(>|$)/g, '');
+  }
 
   function applySettingsToHost() {
     host.style.setProperty('--popup-width', `${settings.popupWidthPx}px`);
     host.style.setProperty('--popup-height', `${settings.popupHeightVh}vh`);
-    
-    // --- MODIFIED FOR DEBUGGING: Hardcode a sans-serif font ---
-    // This ignores the value from settings to check if it's the problem.
-    host.style.setProperty('--font-family', 'Arial, Helvetica, sans-serif');
+    // Apply font family from settings
+    host.style.setProperty('--font-family', settings.fontFamily || 'Arial, Helvetica, sans-serif');
 
     host.style.setProperty('--hotspot-width', `${settings.hotspotWidthPx}px`);
     host.setAttribute('data-hotspot-position', settings.hotspotPosition);
@@ -166,6 +170,7 @@ export async function renderUI(opts: {
       // Edit button (opens the add/edit area)
       const editBtn = document.createElement('button');
       editBtn.className = 'icon-btn';
+      // static SVG — developer-controlled, safe to set as innerHTML
       editBtn.innerHTML = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M3 21v-3.6l11.2-11.2 3.6 3.6L6.6 21H3zM20.7 7.3a1 1 0 0 0 0-1.4l-2.6-2.6a1 1 0 0 0-1.4 0l-1.8 1.8 3.6 3.6 1.8-1.4z" stroke="currentColor" fill="none"/></svg>';
       editBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -250,9 +255,10 @@ export async function renderUI(opts: {
   cancelBtn.addEventListener('click', () => hideAddArea());
 
   saveBtn.addEventListener('click', async () => {
-    const title = inputTitle.value.trim();
-    const quick = inputQuick.value.trim();
-    const text = inputBody.value.trim();
+    // sanitize inputs to prevent any HTML/script being stored or displayed
+    const title = stripHTMLTags(inputTitle.value.trim());
+    const quick = stripHTMLTags(inputQuick.value.trim());
+    const text = stripHTMLTags(inputBody.value.trim());
     if (!title || !text) { alert('Both title and prompt are required'); return; }
     if (editingId != null) {
       const idx = prompts.findIndex(x => x.id === editingId);
@@ -270,7 +276,7 @@ export async function renderUI(opts: {
     const newS: Settings = {
       popupHeightVh: settings.popupHeightVh,
       popupWidthPx: settings.popupWidthPx,
-      fontFamily: settings.fontFamily, // This will be ignored by applySettingsToHost for now
+      fontFamily: settings.fontFamily, // This will be applied
       theme: (sTheme.value as 'light' | 'dark') || settings.theme,
       hotspotPosition: (sHotpos.value as 'corner' | 'edge') || settings.hotspotPosition,
       hotspotWidthPx: settings.hotspotWidthPx
@@ -292,9 +298,10 @@ export async function renderUI(opts: {
   
   function showAddArea(prefillTitle = '', prefillQuick = '', prefillBody = '') {
     isAddingOrEditing = true;
-    inputTitle.value = prefillTitle;
-    inputQuick.value = prefillQuick;
-    inputBody.value = prefillBody;
+    // prefill but sanitize (defensive)
+    inputTitle.value = stripHTMLTags(prefillTitle);
+    inputQuick.value = stripHTMLTags(prefillQuick);
+    inputBody.value = stripHTMLTags(prefillBody);
 
     // open add area
     addArea.classList.add('open');
@@ -465,7 +472,6 @@ export async function renderUI(opts: {
     const rect = panel.getBoundingClientRect();
     if (isPointInsideExtendedRect((ev as MouseEvent).clientX, (ev as MouseEvent).clientY, rect, CLOSE_TOLERANCE_PX)) return;
     
-    // --- MODIFIED BEHAVIOR ---
     // Always hide sub-panels and the main panel on outside click.
     hideAddArea();
     hideSettingsArea();
@@ -475,7 +481,8 @@ export async function renderUI(opts: {
   function getRectsMapLocal() { return getRectsMap(shadow); }
   function playFLIPLocal(before: Map<string, DOMRect>) { playFLIP(shadow, before); }
 
-  (window as any).__promptManager = { rebuild: buildList, getState: () => ({ prompts, settings }) };
+  // NOTE: intentionally do NOT expose internal API on window — avoid giving pages access to extension internals.
+  // previous code exposed window.__promptManager which is a potential leak; removed for safety.
 
   buildList();
 }
