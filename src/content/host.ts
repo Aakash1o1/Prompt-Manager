@@ -118,7 +118,7 @@ export function createOrGetHost() {
         border: 1px solid rgba(255,255,255,0.06);
         padding: 10px;
         box-sizing: border-box;
-        backdrop-filter: blur(10px) saturate(110%);
+        backdrop-filter: blur(5px) saturate(200%);
       }
       .panel.open { display: flex; }
 
@@ -249,8 +249,41 @@ export function createOrGetHost() {
 
       /* remainder unchanged */
       .placeholder { height: 8px; margin: 4px 0; border-radius: 6px; background: rgba(255,255,255,0.02); transition: height 120ms ease; }
+
+      /* add/edit/settings areas */
+      /* make .add-area positioned so we can absolutely place the delete icon at top-right */
       .add-area, .settings-area { display: none; flex-direction: column; gap: 8px; }
+      .add-area { position: relative; }               /* <-- required for absolute delete icon */
       .add-area.open, .settings-area.open { display: flex; }
+
+      /* Delete icon placed at the top-right of the add-area (edit page).
+         It's only created dynamically when editing an existing prompt. */
+      .delete-btn {
+        position: absolute;
+        top: 0px;
+        right: 8px;
+        width: 36px;
+        height: 30px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        border: none;
+        background: transparent;
+        color: var(--txt);
+        cursor: pointer;
+        z-index: 10;
+        transition: box-shadow 140ms ease, background 120ms ease, color 120ms ease;
+      }
+      .delete-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+
+      /* Hover glow (yellow) */
+      .delete-btn:hover {
+        color: #FFD400; /* yellow icon */
+        background: rgba(255, 212, 64, 0.06);
+        box-shadow: 0 0 0 6px rgba(255, 212, 64, 0.10), 0 6px 20px rgba(255, 200, 64, 0.12);
+      }
+
       input[type="text"], textarea { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.03); background: rgba(0,0,0,0.04); color: var(--txt); font-size: var(--font-size); }
       textarea { min-height: 96px; resize: vertical; }
       .settings-row { display:flex; gap:8px; align-items:center; justify-content:space-between; }
@@ -295,7 +328,7 @@ export function createOrGetHost() {
       <div class="add-area" id="add-area" aria-hidden="true">
         <input id="input-title" type="text" placeholder="Prompt title" />
         <input id="input-quick" type="text" placeholder="Quick search code (optional)" />
-        <textarea id="input-body" placeholder="Full prompt text"></textarea>
+        <textarea id="input-body" placeholder="Full prompt text" style="height: 177px;"></textarea>
         <div style="display:flex;gap:8px;justify-content:flex-end">
           <button id="cancel-btn" class="ctrl-btn">Cancel</button>
           <button id="save-btn" class="ctrl-btn">Save</button>

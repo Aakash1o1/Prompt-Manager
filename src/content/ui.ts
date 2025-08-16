@@ -163,13 +163,16 @@ export async function renderUI(opts: {
       left.appendChild(handle); left.appendChild(label);
 
       const icons = document.createElement('div'); icons.className = 'icons';
-      const editBtn = document.createElement('button'); editBtn.className = 'icon-btn';
+      // Edit button (opens the add/edit area)
+      const editBtn = document.createElement('button');
+      editBtn.className = 'icon-btn';
       editBtn.innerHTML = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M3 21v-3.6l11.2-11.2 3.6 3.6L6.6 21H3zM20.7 7.3a1 1 0 0 0 0-1.4l-2.6-2.6a1 1 0 0 0-1.4 0l-1.8 1.8 3.6 3.6 1.8-1.4z" stroke="currentColor" fill="none"/></svg>';
-      editBtn.addEventListener('click', (e) => { e.stopPropagation(); editingId = p.id; showAddArea(p.title, p.quick || '', p.text); });
-      const delBtn = document.createElement('button'); delBtn.className = 'icon-btn';
-      delBtn.innerHTML = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M3 6h18M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6M10 6V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" fill="none"/></svg>';
-      delBtn.addEventListener('click', (e) => { e.stopPropagation(); if (confirm('Delete this prompt?')) { prompts = prompts.filter(x => x.id !== p.id); setStorage({ [PROMPTS_KEY]: prompts }).then(()=>{ buildList(); showToast('Deleted'); }); }});
-      icons.appendChild(editBtn); icons.appendChild(delBtn);
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        editingId = p.id; // set editing id so showAddArea can show 'Delete' inside edit view
+        showAddArea(p.title, p.quick || '', p.text);
+      });
+      icons.appendChild(editBtn);
 
       row.appendChild(left); row.appendChild(icons);
       list.appendChild(row);
@@ -286,20 +289,77 @@ export async function renderUI(opts: {
   // show/hide add/settings helpers
   function showPanel() { panel.classList.add('open'); resetSelection(); }
   function hidePanel() { if (!isAddingOrEditing) panel.classList.remove('open'); }
+  
   function showAddArea(prefillTitle = '', prefillQuick = '', prefillBody = '') {
     isAddingOrEditing = true;
-    // editingId = null;
-    inputTitle.value = prefillTitle; inputQuick.value = prefillQuick; inputBody.value = prefillBody;
-    addArea.classList.add('open'); addArea.setAttribute('aria-hidden', 'false');
-    list.style.display = 'none'; settingsArea.classList.remove('open');
-    panel.classList.add('mode-add'); panel.classList.remove('mode-settings');
+    inputTitle.value = prefillTitle;
+    inputQuick.value = prefillQuick;
+    inputBody.value = prefillBody;
+
+    // open add area
+    addArea.classList.add('open');
+    addArea.setAttribute('aria-hidden', 'false');
+    list.style.display = 'none';
+    settingsArea.classList.remove('open');
+
+    // panel mode class for CSS (hides search etc.)
+    panel.classList.add('mode-add');
+    panel.classList.remove('mode-settings');
+
+    // Remove any existing dynamic delete icon to be safe (idempotent)
+    const existingDel = addArea.querySelector<HTMLButtonElement>('.delete-btn');
+    if (existingDel) existingDel.remove();
+
+    // Only show delete icon when editing an existing prompt
+    if (editingId != null) {
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'delete-btn';
+      delBtn.title = 'Delete prompt';
+      delBtn.setAttribute('aria-label', 'Delete prompt');
+
+      // lightweight line-drawing trash SVG (inherits currentColor)
+      delBtn.innerHTML = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M3 6h18M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6M10 6V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" fill="none"/></svg>';
+
+      // click handler: confirm, delete from prompts, persist, show toast, rebuild
+      delBtn.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        if (!editingId) return;
+        if (!confirm('Delete this prompt?')) return;
+        const idToDelete = editingId;
+        prompts = prompts.filter(x => x.id !== idToDelete);
+        try {
+          await setStorage({ [PROMPTS_KEY]: prompts });
+          showToast('Deleted');
+        } catch (e) {
+          showToast('Delete failed');
+        }
+        editingId = null;
+        hideAddArea();
+        buildList();
+      });
+
+      // append to addArea (positioned absolute via CSS)
+      addArea.appendChild(delBtn);
+    }
   }
 
-
   function hideAddArea() {
-    isAddingOrEditing = false; editingId = null;
-    addArea.classList.remove('open'); addArea.setAttribute('aria-hidden', 'true'); list.style.display = 'block';
-    inputTitle.value = ''; inputBody.value = ''; inputQuick.value = '';
+    isAddingOrEditing = false;
+    editingId = null;
+
+    // remove dynamic delete icon if present
+    const existingDel = addArea.querySelector<HTMLButtonElement>('.delete-btn');
+    if (existingDel) existingDel.remove();
+
+    addArea.classList.remove('open');
+    addArea.setAttribute('aria-hidden', 'true');
+    list.style.display = 'block';
+    inputTitle.value = '';
+    inputBody.value = '';
+    inputQuick.value = '';
+
+    // clear add-mode class
     panel.classList.remove('mode-add');
   }
   
