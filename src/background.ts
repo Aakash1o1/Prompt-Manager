@@ -49,8 +49,17 @@ async function onPermissionGrantedForPattern(pattern: HostPattern) {
     hosts.push(pattern);
     await setAllowedHosts(hosts);
   }
-  // inject content script into existing open tabs for that pattern
-  await injectIntoOpenTabsForPattern(pattern);
+
+  // Ensure the permission actually exists before attempting injection.
+  // This guards against race conditions if the request callback ran in a closed popup.
+  chrome.permissions.contains({ origins: [pattern] }, (has) => {
+    if (has) {
+      // inject content script into existing open tabs for that pattern
+      injectIntoOpenTabsForPattern(pattern).catch((e) => console.warn('Injection failed after permission granted', e));
+    } else {
+      console.warn('Permission indicated for pattern but chrome.permissions.contains returned false:', pattern);
+    }
+  });
 }
 
 // Listen for messages from options page (to notify background to inject) or other parts
@@ -118,5 +127,17 @@ chrome.runtime.onInstalled.addListener(async () => {
     chrome.permissions.contains({ origins: [p] }, (has) => {
       if (has) injectIntoOpenTabsForPattern(p).catch(console.error);
     });
+  }
+});
+
+// Robustness: when permissions are added (anywhere), attempt to install content script
+// for those newly added origins. This handles the case where the popup closed and
+// the popup callback couldn't notify background.
+chrome.permissions.onAdded.addListener((perms) => {
+  if (!perms || !perms.origins) return;
+  for (const originPattern of perms.origins) {
+    // Call same handler used when the options page sends the PERMISSION_GRANTED message.
+    // This will update storage and attempt injection (onPermissionGrantedForPattern checks permission).
+    onPermissionGrantedForPattern(originPattern).catch((e) => console.error('onAdded handler failed', e));
   }
 });

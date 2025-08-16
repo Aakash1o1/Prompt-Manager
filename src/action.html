@@ -5,20 +5,96 @@
   <title>Prompt Manager — Enable site</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial; padding: 12px; width:320px; }
-    label { display:block; margin-top:8px; font-weight:600; }
-    input[type="text"]{width:100%;padding:8px;border-radius:6px;border:1px solid #ddd; margin-top:6px}
-    button { margin-top:10px; padding:8px 12px; border-radius:6px; border: none; background:#2b7bdb; color:#fff; cursor:pointer; width:100%; }
-    .small { font-size:13px; color:#666; margin-top:8px; }
-    code { background:#f3f4f6; padding:2px 4px; border-radius:4px; }
+    :root { --bg:#fff; --muted:#6b7280; --accent:#2563eb; --green:#10b981; --light-gray: #f3f4f6; --radius:8px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { font-family: var(--font-family); padding: 16px; width:380px; color:#111; background:var(--bg); box-sizing: border-box; }
+    h3{ margin:0 0 8px 0; font-size:18px; color: #1f2937; }
+    .small{ font-size:13px; color:var(--muted); margin-top:8px; }
+    label{ display:block; margin-top:16px; font-weight:600; color:#374151; font-size: 14px; }
+    input[type="text"]{ width:100%; padding:10px; border-radius:var(--radius); border:1px solid #d1d5db; margin-top:6px; box-sizing:border-box; font-size:14px; }
+    input[type="text"]:focus { border-color: var(--accent); outline: 2px solid transparent; box-shadow: 0 0 0 2px var(--accent); }
+    button { margin-top:16px; padding:10px 12px; border-radius:8px; border: none; background:var(--accent); color:#fff; cursor:pointer; width:100%; font-weight:600; font-size: 14px; }
+
+    /* Dropdown Panel */
+    .dropdown { margin-top: 16px; position: relative; }
+    .dd-toggle { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px; border-radius:var(--radius); border:1px solid #d1d5db; cursor:pointer; background:#fff; user-select:none; }
+    .dd-toggle .label { font-weight:600; color:#111; }
+    .dd-chevron { width:18px; height:18px; transform:rotate(0deg); transition:transform .18s ease; }
+    .dd-open .dd-chevron { transform: rotate(180deg); }
+    .hint { font-size:13px; color:var(--muted); margin-left:8px; }
+
+    /* --- NEW: Grid container for site buttons --- */
+    .dd-list {
+      display: none; /* Initially hidden, JS will change to 'grid' */
+      grid-template-columns: repeat(3, 1fr); /* 3 columns */
+      gap: 8px;
+      margin-top: 8px;
+      padding: 10px;
+      border: 1px solid #e5e7eb;
+      border-radius: var(--radius);
+      background: var(--light-gray);
+    }
+
+    /* --- NEW: Site button styling --- */
+    .site-button {
+      padding: 10px 6px;
+      border-radius: 6px;
+      border: 1px solid #d1d5db;
+      background: #fff;
+      cursor: pointer;
+      text-align: center;
+      transition: background 0.12s ease, border-color 0.12s ease;
+      font-size: 13px;
+      user-select: none;
+    }
+    .site-button:hover { border-color: #a5b4fc; }
+
+    .site-button-title { font-weight: 600; color: #1f2937; }
+    .site-button-domain { font-size: 11px; color: var(--muted); margin-top: 2px; display: none; /* Hidden for cleaner look */ }
+
+    /* --- NEW: Button states --- */
+    .site-selected {
+      background: #dbeafe; /* Light blue */
+      border: 1px solid var(--accent);
+      color: #1e40af;
+    }
+    .site-enabled {
+      background: #f0fdf4; /* Light green */
+      border: 1px solid #bbf7d0;
+      color: #166534;
+      cursor: not-allowed;
+      opacity: 0.8;
+    }
+    .site-enabled:hover { border-color: #bbf7d0; }
+
   </style>
 </head>
 <body>
-  <h3 style="margin:0 0 8px 0">Enable Prompt Drawer on a site</h3>
-  <div class="small">Enter a host pattern (e.g. <code>https://chat.openai.com/*</code>)</div>
+  <h3>Enable Prompt Drawer on a site</h3>
+  <div class="small">Enter a host pattern (e.g. <code>https://chatgpt.com/*</code>)</div>
+
+  <!-- Manual Host Input -->
   <label for="host">Site pattern</label>
   <input id="host" type="text" placeholder="https://example.com/*" />
+
+  <!-- Dropdown for popular sites -->
+  <div class="dropdown" id="popular-dropdown">
+    <div class="dd-toggle" id="dd-toggle" role="button" aria-expanded="false">
+      <div style="display:flex;align-items:center;">
+        <div class="label">Popular Sites</div>
+        <div class="hint">Click to select</div>
+      </div>
+      <svg class="dd-chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#374151"><path d="M6 9l6 6 6-6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+
+    <!-- Container for the button grid (initially hidden) -->
+    <div class="dd-list" id="dd-list">
+      <!-- JavaScript will render site buttons here -->
+    </div>
+  </div>
+
+  <!-- Unified "Enable" button for all selections -->
   <button id="enable">Request permission & enable</button>
+
   <div id="status" class="small"></div>
 
   <script src="action.js"></script>
