@@ -60,7 +60,6 @@ export async function renderUI(opts: {
   let editingId: string | null = null;
   let draggedId: string | null = null;
   let placeholder: HTMLElement | null = null;
-  let pendingHideTimer: number | null = null;
   const CLOSE_TOLERANCE_PX = 10;
 
   function uid() { return Math.random().toString(36).slice(2, 9); }
@@ -68,7 +67,11 @@ export async function renderUI(opts: {
   function applySettingsToHost() {
     host.style.setProperty('--popup-width', `${settings.popupWidthPx}px`);
     host.style.setProperty('--popup-height', `${settings.popupHeightVh}vh`);
-    host.style.setProperty('--font-family', settings.fontFamily);
+    
+    // --- MODIFIED FOR DEBUGGING: Hardcode a sans-serif font ---
+    // This ignores the value from settings to check if it's the problem.
+    host.style.setProperty('--font-family', 'Arial, Helvetica, sans-serif');
+
     host.style.setProperty('--hotspot-width', `${settings.hotspotWidthPx}px`);
     host.setAttribute('data-hotspot-position', settings.hotspotPosition);
     host.setAttribute('data-theme', settings.theme);
@@ -86,14 +89,13 @@ export async function renderUI(opts: {
   function ensurePlaceholder() { if (placeholder) return placeholder; placeholder = document.createElement('div'); placeholder.className = 'placeholder'; return placeholder; }
   function removePlaceholder() { if (!placeholder) return; if (placeholder.parentElement) placeholder.parentElement.removeChild(placeholder); placeholder = null; }
 
-  // MODIFIED: filterPrompts now also searches the body of the prompt
+  // --- MODIFIED: filterPrompts now only searches title and quick search ---
   function filterPrompts(q: string) {
     const s = q.trim().toLowerCase();
     if (!s) return prompts;
     return prompts.filter(p =>
         (p.title && p.title.toLowerCase().includes(s)) ||
-        (p.quick && p.quick.toLowerCase().includes(s)) ||
-        (p.text && p.text.toLowerCase().includes(s))
+        (p.quick && p.quick.toLowerCase().includes(s))
     );
   }
 
@@ -265,7 +267,7 @@ export async function renderUI(opts: {
     const newS: Settings = {
       popupHeightVh: settings.popupHeightVh,
       popupWidthPx: settings.popupWidthPx,
-      fontFamily: settings.fontFamily,
+      fontFamily: settings.fontFamily, // This will be ignored by applySettingsToHost for now
       theme: (sTheme.value as 'light' | 'dark') || settings.theme,
       hotspotPosition: (sHotpos.value as 'corner' | 'edge') || settings.hotspotPosition,
       hotspotWidthPx: settings.hotspotWidthPx
@@ -286,7 +288,7 @@ export async function renderUI(opts: {
   function hidePanel() { if (!isAddingOrEditing) panel.classList.remove('open'); }
   function showAddArea(prefillTitle = '', prefillQuick = '', prefillBody = '') {
     isAddingOrEditing = true;
-    editingId = null;
+    // editingId = null;
     inputTitle.value = prefillTitle; inputQuick.value = prefillQuick; inputBody.value = prefillBody;
     addArea.classList.add('open'); addArea.setAttribute('aria-hidden', 'false');
     list.style.display = 'none'; settingsArea.classList.remove('open');
@@ -312,30 +314,6 @@ export async function renderUI(opts: {
   }
   
   function hideSettingsArea() { settingsArea.classList.remove('open'); settingsArea.setAttribute('aria-hidden', 'true'); list.style.display = 'block'; panel.classList.remove('mode-settings'); }
-
-  // tolerant hide (10px tolerance)
-  let lastMouse = { x: 0, y: 0 };
-  document.addEventListener('mousemove', (ev) => { lastMouse.x = ev.clientX; lastMouse.y = ev.clientY; }, { passive: true });
-
-  panel.addEventListener('mouseleave', () => {
-    if (pendingHideTimer) window.clearTimeout(pendingHideTimer);
-    pendingHideTimer = window.setTimeout(() => {
-      const rect = panel.getBoundingClientRect();
-      if (isPointInsideExtendedRect(lastMouse.x, lastMouse.y, rect, CLOSE_TOLERANCE_PX)) {
-        pendingHideTimer = null;
-        return;
-      }
-      if (!isAddingOrEditing) panel.classList.remove('open');
-      pendingHideTimer = null;
-    }, 120);
-  });
-  panel.addEventListener('mouseenter', () => {
-    if (pendingHideTimer) {
-      window.clearTimeout(pendingHideTimer);
-      pendingHideTimer = null;
-      resetSelection();
-    }
-  });
 
   function isPointInsideExtendedRect(x: number, y: number, rect: DOMRect, tol: number) {
     return x >= (rect.left - tol) && x <= (rect.right + tol) && y >= (rect.top - tol) && y <= (rect.bottom + tol);
@@ -426,11 +404,13 @@ export async function renderUI(opts: {
     if (Array.isArray(path) && (path.includes(panel) || path.includes(host))) return;
     const rect = panel.getBoundingClientRect();
     if (isPointInsideExtendedRect((ev as MouseEvent).clientX, (ev as MouseEvent).clientY, rect, CLOSE_TOLERANCE_PX)) return;
-    if (!isAddingOrEditing) panel.classList.remove('open');
+    
+    // --- MODIFIED BEHAVIOR ---
+    // Always hide sub-panels and the main panel on outside click.
+    hideAddArea();
+    hideSettingsArea();
+    panel.classList.remove('open');
   });
-
-  // close on blur
-  window.addEventListener('blur', () => { if (!isAddingOrEditing) panel.classList.remove('open'); });
 
   function getRectsMapLocal() { return getRectsMap(shadow); }
   function playFLIPLocal(before: Map<string, DOMRect>) { playFLIP(shadow, before); }

@@ -88,7 +88,7 @@ export function createOrGetHost() {
         width: var(--hotspot-width);
         height: var(--popup-height);
         top: calc(50% - (var(--popup-height) / 2));
-        border-radius: 4;
+        border-radius: 4px; /* <<< --- FIX: Added 'px' unit here */
         writing-mode: vertical-rl;
         font-size: 13px;
         color: transparent; /* hide inner emoji/text */
