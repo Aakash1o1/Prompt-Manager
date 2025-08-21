@@ -6,7 +6,6 @@
 type Settings = {
   popupHeightVh: number;
   popupWidthPx: number;
-  fontFamily: string;
   theme: 'light' | 'dark';
   hotspotPosition: 'corner' | 'edge';
   hotspotWidthPx: number;

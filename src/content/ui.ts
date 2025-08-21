@@ -10,7 +10,6 @@ type Prompt = { id: string; title: string; text: string; quick?: string };
 type Settings = {
   popupHeightVh: number;
   popupWidthPx: number;
-  fontFamily: string;
   theme: 'light' | 'dark';
   hotspotPosition: 'corner' | 'edge';
   hotspotWidthPx: number;
@@ -55,12 +54,27 @@ export async function renderUI(opts: {
   const sSave = shadow.getElementById('s-save') as HTMLButtonElement || shadow.getElementById('s-save') as any;
   const sCancel = shadow.getElementById('s-cancel') as HTMLButtonElement;
 
-
+  const inputElements = [inputTitle, inputQuick, inputBody, searchInput, sFontSize, sTheme, sHotpos];
   let isAddingOrEditing = false;
   let editingId: string | null = null;
   let draggedId: string | null = null;
   let placeholder: HTMLElement | null = null;
   const CLOSE_TOLERANCE_PX = 10;
+
+  const stopBubbleHandler = (ev: KeyboardEvent) => {
+    // Only act when our panel is open
+    if (!panel.classList.contains('open')) return;
+
+    // Stop propagation so the page doesn't get this key event.
+    // Do NOT call preventDefault() here — letting the element receive default actions (typing/newline) is crucial.
+    ev.stopPropagation();
+  };
+
+  panel.addEventListener('keydown', stopBubbleHandler, false);
+  panel.addEventListener('keypress', stopBubbleHandler, false);
+  panel.addEventListener('keyup', stopBubbleHandler, false);
+
+
 
   function uid() { return (crypto as any).randomUUID?.() ?? Math.random().toString(36).slice(2, 9); }
 
@@ -73,8 +87,6 @@ export async function renderUI(opts: {
   function applySettingsToHost() {
     host.style.setProperty('--popup-width', `${settings.popupWidthPx}px`);
     host.style.setProperty('--popup-height', `${settings.popupHeightVh}vh`);
-    // Apply font family from settings
-    host.style.setProperty('--font-family', settings.fontFamily || 'Arial, Helvetica, sans-serif');
 
     host.style.setProperty('--hotspot-width', `${settings.hotspotWidthPx}px`);
     host.setAttribute('data-hotspot-position', settings.hotspotPosition);
@@ -245,7 +257,27 @@ export async function renderUI(opts: {
   buildList();
 
   /* UI events */
-  hotzone.addEventListener('mouseenter', () => showPanel());
+  // Open panel on hover and focus the search input (unless add/edit or settings are open).
+  hotzone.addEventListener('mouseenter', () => {
+    showPanel();
+
+    // Focus the search input a short moment after opening so the panel has finished its open transition.
+    // Do not steal focus if the add/edit area or settings area is currently open.
+    setTimeout(() => {
+      try {
+        if (!addArea.classList.contains('open') && !settingsArea.classList.contains('open')) {
+          // focus and move caret to end of existing search text
+          searchInput?.focus();
+          if (typeof (searchInput as any).setSelectionRange === 'function') {
+            const len = (searchInput.value || '').length;
+            (searchInput as HTMLInputElement).setSelectionRange(len, len);
+          }
+        }
+      } catch (e) {
+        // ignore any focus errors
+      }
+    }, 60);
+  });
   addBtn.addEventListener('click', () => {
     editingId = null;
     showAddArea();
@@ -276,7 +308,6 @@ export async function renderUI(opts: {
     const newS: Settings = {
       popupHeightVh: settings.popupHeightVh,
       popupWidthPx: settings.popupWidthPx,
-      fontFamily: settings.fontFamily, // This will be applied
       theme: (sTheme.value as 'light' | 'dark') || settings.theme,
       hotspotPosition: (sHotpos.value as 'corner' | 'edge') || settings.hotspotPosition,
       hotspotWidthPx: settings.hotspotWidthPx
@@ -309,6 +340,7 @@ export async function renderUI(opts: {
     list.style.display = 'none';
     settingsArea.classList.remove('open');
 
+    addArea.classList.add('open')
     // panel mode class for CSS (hides search etc.)
     panel.classList.add('mode-add');
     panel.classList.remove('mode-settings');
@@ -366,6 +398,10 @@ export async function renderUI(opts: {
     inputBody.value = '';
     inputQuick.value = '';
 
+
+    try { (searchInput as HTMLInputElement).tabIndex = 0; } catch {}
+try { (searchInput as HTMLInputElement).tabIndex = 0; } catch {}
+
     // clear add-mode class
     panel.classList.remove('mode-add');
   }
@@ -380,7 +416,14 @@ export async function renderUI(opts: {
     panel.classList.add('mode-settings'); panel.classList.remove('mode-add');
   }
   
-  function hideSettingsArea() { settingsArea.classList.remove('open'); settingsArea.setAttribute('aria-hidden', 'true'); list.style.display = 'block'; panel.classList.remove('mode-settings'); }
+  function hideSettingsArea() { 
+    settingsArea.classList.remove('open');
+    settingsArea.setAttribute('aria-hidden', 'true'); 
+    list.style.display = 'block'; 
+    panel.classList.remove('mode-settings'); 
+    try { (searchInput as HTMLInputElement).tabIndex = 0; } catch {}
+
+  }
 
   function isPointInsideExtendedRect(x: number, y: number, rect: DOMRect, tol: number) {
     return x >= (rect.left - tol) && x <= (rect.right + tol) && y >= (rect.top - tol) && y <= (rect.bottom + tol);
@@ -405,37 +448,47 @@ export async function renderUI(opts: {
   searchInput.addEventListener('input', () => buildList());
 
   // --- REPLACED: New keyboard handling ---
-  document.addEventListener('keydown', async (ev) => {
-    if (!panel.classList.contains('open')) return;
+// --- Fixed keyboard handling ---
+document.addEventListener('keydown', async (ev: KeyboardEvent) => {
+  if (!panel.classList.contains('open')) return;
 
-    if (ev.key === 'ArrowDown') {
-      ev.preventDefault();
-      if (filteredPrompts.length > 0) {
-        selectedIndex = (selectedIndex + 1) % filteredPrompts.length;
-        highlightSelection();
-      }
-    } else if (ev.key === 'ArrowUp') {
-      ev.preventDefault();
-      if (filteredPrompts.length > 0) {
-        selectedIndex = (selectedIndex - 1 + filteredPrompts.length) % filteredPrompts.length;
-        highlightSelection();
-      }
-    } else if (ev.key === 'Enter') {
-      // Do not interfere with Enter when in a textarea (e.g., add/edit area)
-      if (document.activeElement && (document.activeElement as HTMLElement).tagName === 'TEXTAREA') return;
-      ev.preventDefault();
-      
-      if (filteredPrompts.length === 0 || !filteredPrompts[selectedIndex]) {
-        showToast('No prompt selected.');
-        return;
-      }
-      const prompt = filteredPrompts[selectedIndex];
-      const ok = await copyToClipboard(prompt.text);
-      showToast(ok ? 'Copied' : 'Copy failed');
-    } else if (ev.key === 'Escape' && !isAddingOrEditing) {
+  // Since we're using stopPropagation on all inputs,
+  // if we reach this handler, we know the user is NOT typing in any input field
+  
+  // Don't interfere when in special modes
+  if (isAddingOrEditing || settingsArea.classList.contains('open')) {
+    if (ev.key === 'Escape' && !isAddingOrEditing && !settingsArea.classList.contains('open')) {
       panel.classList.remove('open');
     }
-  });
+    return;
+  }
+
+  // Handle navigation keys
+  if (ev.key === 'ArrowDown') {
+    ev.preventDefault();
+    if (filteredPrompts.length > 0) {
+      selectedIndex = (selectedIndex + 1) % filteredPrompts.length;
+      highlightSelection();
+    }
+  } else if (ev.key === 'ArrowUp') {
+    ev.preventDefault();
+    if (filteredPrompts.length > 0) {
+      selectedIndex = (selectedIndex - 1 + filteredPrompts.length) % filteredPrompts.length;
+      highlightSelection();
+    }
+  } else if (ev.key === 'Enter') {
+    ev.preventDefault();
+    if (filteredPrompts.length === 0 || !filteredPrompts[selectedIndex]) {
+      showToast('No prompt selected.');
+      return;
+    }
+    const prompt = filteredPrompts[selectedIndex];
+    const ok = await copyToClipboard(prompt.text);
+    showToast(ok ? 'Copied' : 'Copy failed');
+  } else if (ev.key === 'Escape') {
+    panel.classList.remove('open');
+  }
+});
 
   // listen for storage changes to local across tabs
   chrome.storage.onChanged.addListener((changes, area) => {

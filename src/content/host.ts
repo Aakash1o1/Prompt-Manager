@@ -25,7 +25,7 @@ export function createOrGetHost() {
         all: initial;
         --popup-width: 280px;
         --popup-height: 56vh;
-        --font-family: Arial, Helvetica, sans-serif;
+        --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         --font-size: 13px;
         --bg-dark: rgba(12,18,24,0.55);
         --bg-dark-b: rgba(24,32,40,0.55);
@@ -85,14 +85,14 @@ export function createOrGetHost() {
       /* Edge-mode: narrow mist bar on the right edge; icon hidden (color made transparent) */
       :host([data-hotspot-position="edge"]) .hotzone {
         right: 0;
-        width: var(--hotspot-width);
+        width: 10px;
         height: var(--popup-height);
         top: calc(50% - (var(--popup-height) / 2));
         border-radius: 4px; /* <<< --- FIX: Added 'px' unit here */
         writing-mode: vertical-rl;
         font-size: 13px;
         color: transparent; /* hide inner emoji/text */
-        background: linear-gradient(90deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0.56) 40%, rgba(255, 255, 255, 0.56) 100%);
+        background: linear-gradient(86deg, rgb(0 12 255 / 0%) 0%, rgb(41 169 255 / 88%) 40%, rgb(255 255 255 / 0%) 100%);
         backdrop-filter: blur(6px) saturate(120%); /* mist/blur */
         box-shadow: none;
       }
@@ -143,7 +143,11 @@ export function createOrGetHost() {
       }
       /* hide search when not on the prompt list page */
       .panel.mode-add .search,
-      .panel.mode-settings .search { display: none !important; }
+      .panel.mode-settings .search {
+        visibility: hidden !important;   /* keeps layout but hides visually */
+        opacity: 0 !important;           /* ensure it's invisible (defensive) */
+        pointer-events: none !important; /* prevent mouse interaction */
+      }
 
       .controls { display: flex; gap: 6px; align-items: center; }
       .ctrl-btn {
@@ -263,7 +267,7 @@ export function createOrGetHost() {
         top: 0px;
         right: 8px;
         width: 36px;
-        height: 30px;
+        height: 3px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -303,6 +307,22 @@ export function createOrGetHost() {
         transition: opacity .18s;
       }
       .toast.show { opacity: 1; }
+
+      :host([data-hotspot-position="edge"]) .panel {
+        right: 0;                        /* flush with right edge of the viewport */
+        bottom: auto;                    /* unset bottom-based anchoring used in corner mode */
+        top: 50%;                        /* put element center-line at 50% of viewport */
+        transform: translateY(-50%);     /* shift up by half its own height -> vertically centered */
+        border-radius: 12px 0 0 12px;    /* round only the left side for a flush-right look */
+        max-height: 98vh;                /* keep inside viewport */
+        min-height: 10vh;                /* keep inside viewport */
+        max-width: 50vw;                /* keep inside viewport */
+        min-width: 15vw;                /* keep inside viewport */
+
+        /* keep overflow behavior the same as before */
+        overflow: hidden;
+      }
+
     </style>
 
     <!-- HOTSPOT (corner or edge) -->
