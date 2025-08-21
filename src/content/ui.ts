@@ -447,6 +447,57 @@ try { (searchInput as HTMLInputElement).tabIndex = 0; } catch {}
   // live search
   searchInput.addEventListener('input', () => buildList());
 
+  // When the search box is focused and we're on the list page, use keys for list navigation.
+  // This allows arrows/enter to control selection even while user is typing in search.
+  searchInput.addEventListener('keydown', async (ev: KeyboardEvent) => {
+    // only when panel open and not editing or settings
+    if (!panel.classList.contains('open')) return;
+    if (isAddingOrEditing || settingsArea.classList.contains('open')) return;
+
+    // handle navigation keys here and prevent default caret movement/submission
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      ev.stopPropagation();
+
+      if (!filteredPrompts || filteredPrompts.length === 0) return;
+
+      if (ev.key === 'ArrowDown') {
+        selectedIndex = (selectedIndex + 1) % filteredPrompts.length;
+      } else {
+        selectedIndex = (selectedIndex - 1 + filteredPrompts.length) % filteredPrompts.length;
+      }
+      highlightSelection();
+      return;
+    }
+
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      ev.stopPropagation();
+
+      if (!filteredPrompts || !filteredPrompts[selectedIndex]) {
+        showToast('No prompt selected.');
+        return;
+      }
+      const prompt = filteredPrompts[selectedIndex];
+      const ok = await copyToClipboard(prompt.text);
+      showToast(ok ? 'Copied' : 'Copy failed');
+
+      // keep focus in searchInput after copying
+      try { (searchInput as HTMLInputElement).focus(); } catch (e) {}
+      return;
+    }
+
+    if (ev.key === 'Escape') {
+      // let Escape close the panel (mirrors document handler behavior)
+      ev.preventDefault();
+      ev.stopPropagation();
+      panel.classList.remove('open');
+    }
+  });
+
+
+
+
   // --- REPLACED: New keyboard handling ---
 // --- Fixed keyboard handling ---
 document.addEventListener('keydown', async (ev: KeyboardEvent) => {
