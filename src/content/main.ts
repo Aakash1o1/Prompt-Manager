@@ -3,7 +3,9 @@ import { createOrGetHost } from './host';
 import { renderUI } from './ui';
 import { getStorage } from '../lib/storage';
 
-type Prompt = { id: string; title: string; text: string; quick?: string };
+type Prompt = { id: string; title: string; text: string; quick?: string; tags?: string[] };
+type Tag = { id: string; name: string; color: string; order: number };
+
 type Settings = {
   popupHeightVh: number;
   popupWidthPx: number;
@@ -15,6 +17,7 @@ type Settings = {
 
 const PROMPTS_KEY = 'promptManager.prompts';
 const SETTINGS_KEY = 'promptManager.settings';
+const TAGS_KEY = 'promptManager.tags';
 
 const DEFAULT_SETTINGS: Settings = {
   popupHeightVh: 56,
@@ -28,6 +31,8 @@ const DEFAULT_SETTINGS: Settings = {
 async function loadAndInit() {
   let prompts: Prompt[] = [];
   let settings: Settings = DEFAULT_SETTINGS;
+  let tags: Tag[] = [];
+
   try {
     const p = await getStorage<Prompt[]>(PROMPTS_KEY);
     prompts = Array.isArray(p) ? p : [];
@@ -41,9 +46,16 @@ async function loadAndInit() {
     settings = DEFAULT_SETTINGS;
   }
 
+  try {
+    const t = await getStorage<Tag[]>(TAGS_KEY);
+    tags = Array.isArray(t) ? t : [];
+  } catch (e) {
+    tags = [];
+  }
+
   const { host, shadow } = createOrGetHost();
   // render main UI
-  await renderUI({ host, shadow, prompts, settings, PROMPTS_KEY, SETTINGS_KEY });
+  await renderUI({ host, shadow, prompts, tags, settings, PROMPTS_KEY, SETTINGS_KEY, TAGS_KEY });
 }
 
 if (document.readyState === 'loading') {
