@@ -70,6 +70,22 @@ export async function renderUI(opts: {
   const sHotpos = shadow.getElementById('s-hotspot-pos') as HTMLSelectElement;
   const sSave = shadow.getElementById('s-save') as HTMLButtonElement || shadow.getElementById('s-save') as any;
   const sCancel = shadow.getElementById('s-cancel') as HTMLButtonElement;
+// Shared color input appended to document.body for reliable native picker behavior
+const sharedColorPicker = document.createElement('input');
+sharedColorPicker.type = 'color';
+sharedColorPicker.style.position = 'fixed';
+sharedColorPicker.style.left = '-9999px';
+sharedColorPicker.style.width = '1px';
+sharedColorPicker.style.height = '1px';
+sharedColorPicker.setAttribute('aria-hidden', 'true');
+try {
+  // append to document.body (more reliable than shadow root for native pickers)
+  (document.body || document.documentElement).appendChild(sharedColorPicker);
+} catch (e) {
+  // fallback: append to shadow if body isn't available (very unlikely)
+  try { shadow.appendChild(sharedColorPicker); } catch (err) { /* ignore */ }
+}
+
 
   const inputElements = [inputTitle, inputQuick, inputBody, searchInput, sFontSize, sTheme, sHotpos];
   // Prevent key events from leaking to global handlers when user is typing inside the panel.
@@ -88,6 +104,78 @@ export async function renderUI(opts: {
   let placeholder: HTMLElement | null = null;
   const CLOSE_TOLERANCE_PX = 10;
 
+  // ---------- Helper: robustly detect "click inside" with composedPath support ----------
+  function pathTouches(path: any[], els: Array<Element | ShadowRoot | null>) {
+    if (!Array.isArray(path)) return false;
+    for (const node of path) {
+      for (const el of els) {
+        if (!el) continue;
+        // exact match
+        if (node === el) return true;
+        // element contains node (descendant clicked)
+        try {
+          if (el instanceof Node && node instanceof Node && (el as Node).contains(node)) return true;
+        } catch (e) { /* ignore cross-origin/other issues */ }
+        // shadow-root entry: composedPath may include a ShadowRoot whose .host is the element
+        if ((node as any)?.host && (node as any).host === el) return true;
+      }
+    }
+    return false;
+  }
+
+  // -----------------------------
+  // Backdrop helpers (single controlled backdrop)
+  // -----------------------------
+  let panelBackdrop: HTMLElement | null = null;
+
+  function createPanelBackdrop() {
+    if (panelBackdrop) return panelBackdrop;
+    const b = document.createElement('div');
+    b.className = 'panel-backdrop';
+    Object.assign(b.style, {
+      position: 'fixed',
+      top: '0',
+      left: '0',
+      right: '0',
+      bottom: '0',
+      zIndex: '9980', // intentionally lower than palette (palette uses 9999)
+      background: 'transparent',
+      pointerEvents: 'auto'
+    });
+    b.addEventListener('mousedown', (ev) => {
+      // stopPropagation so document-level handlers don't double-run
+      ev.stopPropagation();
+
+      // close everything and remove the backdrop
+      hideAddArea();
+      hideSettingsArea();
+      closeTagsDropdown();
+      closeColorPalette();
+      panel.classList.remove('open');
+      removePanelBackdrop();
+    });
+    panelBackdrop = b;
+    return b;
+  }
+
+  function attachPanelBackdrop() {
+    // append to document.body only when panel opens
+    const b = createPanelBackdrop();
+    if (!document.body.contains(b)) document.body.appendChild(b);
+  }
+
+  function removePanelBackdrop() {
+    if (!panelBackdrop) return;
+    try { panelBackdrop.remove(); } catch (e) { /* ignore */ }
+    panelBackdrop = null;
+  }
+
+
+
+
+
+
+
   // Draft tags for new prompt being created (unsaved)
   let draftPromptTagIds: string[] = [];
 
@@ -97,6 +185,196 @@ export async function renderUI(opts: {
     if (!input) return '';
     return input.replace(/<\/?[^>]+(>|$)/g, '');
   }
+
+
+
+  // -----------------------------
+  // Color helpers
+  // -----------------------------
+  // Parse hex (#rrggbb or #rgb) or 'rgb(r,g,b)' into {r,g,b} or return null
+  function parseColorToRgb(input: string): { r: number; g: number; b: number } | null {
+    if (!input) return null;
+    const s = (input || '').trim();
+    // hex #rrggbb or #rgb
+    if (s[0] === '#') {
+      let hex = s.slice(1);
+      if (hex.length === 3) hex = hex.split('').map(ch => ch + ch).join('');
+      if (hex.length !== 6) return null;
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return null;
+      return { r, g, b };
+    }
+    // rgb(...) format
+    const rgbMatch = s.match(/rgba?\(\s*([0-9]+)[,\s]+([0-9]+)[,\s]+([0-9]+)/i);
+    if (rgbMatch) {
+      return { r: Number(rgbMatch[1]), g: Number(rgbMatch[2]), b: Number(rgbMatch[3]) };
+    }
+    // Fallback: create element, set color, read computed style (handles named colors)
+    try {
+      const el = document.createElement('div');
+      el.style.color = s;
+      document.body.appendChild(el);
+      const cs = getComputedStyle(el).color;
+      el.remove();
+      const m = cs.match(/rgba?\(\s*([0-9]+)[,\s]+([0-9]+)[,\s]+([0-9]+)/i);
+      if (m) return { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]) };
+    } catch (e) {
+      // ignore
+    }
+    return null;
+  }
+
+  // Return '#000' or '#fff' for readable text on top of the given background color
+  function getContrastTextColor(bgColor: string): string {
+    const rgb = parseColorToRgb(bgColor);
+    if (!rgb) return '#000';
+    // perceptual luminance
+    const r = rgb.r / 255;
+    const g = rgb.g / 255;
+    const b = rgb.b / 255;
+    const lum = 0.2126 * (r <= 0.03928 ? r / 12.92 : Math.pow((r + 0.055) / 1.055, 2.4))
+              + 0.7152 * (g <= 0.03928 ? g / 12.92 : Math.pow((g + 0.055) / 1.055, 2.4))
+              + 0.0722 * (b <= 0.03928 ? b / 12.92 : Math.pow((b + 0.055) / 1.055, 2.4));
+    // contrast threshold - choose white text for dark backgrounds
+    return lum > 0.5 ? '#000' : '#fff';
+  }
+
+  // Build a lightly tinted background rgba() string from a color and alpha
+  function tintBackground(bgColor: string, alpha = 0.08) {
+    const rgb = parseColorToRgb(bgColor);
+    if (!rgb) return '';
+    return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+  }
+
+  // -----------------------------
+  // Color palette popup helper
+  // -----------------------------
+  // Palette configuration: a compact set of usable colors
+  const COLOR_PALETTE = [
+    '#FF6B6B','#FF8A65','#FFD166','#F9F871','#9AE66E','#6EE7B7','#6ECFF6','#6B9CFF',
+    '#8F8CFF','#D39BFF','#FF9AD1','#FFB3E6','#D0D0D0','#A0A0A0','#7F5539','#2B2B2B'
+  ];
+
+  // palette element (created lazily)
+  let colorPaletteEl: HTMLElement | null = null;
+  let colorPaletteOpenForTagId: string | null = null;
+
+  function createColorPaletteElement() {
+    if (colorPaletteEl) return colorPaletteEl;
+    const pal = document.createElement('div');
+    pal.className = 'tag-color-palette';
+    pal.setAttribute('role', 'dialog');
+    pal.style.position = 'absolute';
+    pal.style.zIndex = '9999';
+    pal.style.padding = '8px';
+    pal.style.display = 'grid';
+    pal.style.gridTemplateColumns = 'repeat(8, 20px)';
+    pal.style.gridGap = '8px';
+    pal.style.background = 'var(--panel-bg, #111)';
+    pal.style.border = '1px solid rgba(255,255,255,0.06)';
+    pal.style.borderRadius = '6px';
+    pal.style.boxShadow = '0 8px 24px rgba(0,0,0,0.5)';
+    pal.style.maxWidth = 'calc(100% - 16px)';
+    pal.style.padding = '10px';
+
+    for (const c of COLOR_PALETTE) {
+      const sw = document.createElement('button');
+      sw.type = 'button';
+      sw.className = 'palette-swatch';
+      sw.dataset.color = c;
+      sw.style.width = '20px';
+      sw.style.height = '20px';
+      sw.style.borderRadius = '4px';
+      sw.style.border = '1px solid rgba(0,0,0,0.18)';
+      sw.style.background = c;
+      sw.style.cursor = 'pointer';
+      sw.style.padding = '0';
+      sw.title = c;
+      sw.addEventListener('click', (ev) => {
+        // Prevent the click from bubbling up and being treated as "outside".
+        ev.stopPropagation();
+        ev.preventDefault();
+
+        const color = (ev.currentTarget as HTMLElement).dataset.color!;
+        if (!color) return;
+
+        if (colorPaletteOpenForTagId) {
+          // Apply color immediately and update UI/storage.
+          recolorTag(colorPaletteOpenForTagId, color).catch(() => {});
+        }
+
+        // Keep the palette open so the user can try other colors.
+        // Keep focus on the palette for keyboard support.
+        try { (colorPaletteEl as HTMLElement).focus?.(); } catch (e) { /* ignore */ }
+      });
+      sw.addEventListener('mousedown', (ev) => ev.stopPropagation());
+      pal.appendChild(sw);
+    }
+
+    // clicking inside palette shouldn't close tags dropdown
+    pal.addEventListener('click', (ev) => ev.stopPropagation());
+    // close on Escape
+    pal.addEventListener('keydown', (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') { ev.stopPropagation(); closeColorPalette(); }
+    });
+
+    colorPaletteEl = pal;
+    return pal;
+  }
+
+  function openColorPaletteFor(tagId: string, anchorEl: HTMLElement) {
+    const pal = createColorPaletteElement();
+    colorPaletteOpenForTagId = tagId;
+
+    // append palette into tagsDropdown (so it moves with it)
+    if (!tagsDropdown) return;
+    tagsDropdown.appendChild(pal);
+
+    // compute position anchored to anchorEl within tagsDropdown
+    const anchorRect = anchorEl.getBoundingClientRect();
+    const containerRect = tagsDropdown.getBoundingClientRect();
+    // position relative to tagsDropdown
+    const left = Math.max(8, anchorRect.right - containerRect.left - pal.offsetWidth);
+    // prefer aligning vertically centered over the row, but keep inside container
+    const top = Math.max(8, anchorRect.top - containerRect.top - (pal.offsetHeight / 2) + (anchorRect.height / 2));
+
+    pal.style.left = `${left}px`;
+    pal.style.top = `${top}px`;
+
+    // ensure focus for keyboard Escape
+    pal.tabIndex = -1;
+    pal.focus?.();
+  }
+
+  function closeColorPalette() {
+    if (!colorPaletteEl) return;
+    try { if (colorPaletteEl.parentElement) colorPaletteEl.parentElement.removeChild(colorPaletteEl); } catch {}
+    colorPaletteOpenForTagId = null;
+  }
+
+  // Close palette when clicking outside the tagsDropdown or on global mousedown
+  // Close palette when clicking outside — robust to shadow/composedPath and checks palette, dropdown, panel, host.
+  // NOTE: do NOT use capture here (no `true`), so target/handlers get a chance to run first.
+  // Close palette when clicking outside the tagsDropdown or on global mousedown
+  document.addEventListener('mousedown', (ev) => {
+      if (!colorPaletteEl) return;
+
+      // Prefer composedPath() when available (works with shadow DOM); fallback to [ev.target].
+      const path = (ev as any).composedPath ? (ev as any).composedPath() : [ev.target];
+
+      // robustly detect if event touched any of these elements (or their descendants /shadow hosts)
+      const clickedInside = pathTouches(path, [colorPaletteEl]);
+      if (clickedInside) return;
+
+      // Otherwise close the palette
+      closeColorPalette();
+    }, false /* no capture */);
+
+
+
+
 
   function applySettingsToHost() {
     host.style.setProperty('--popup-width', `${settings.popupWidthPx}px`);
@@ -328,7 +606,10 @@ function ensureTagsClosedOnModeChange() {
           chip.className = 'tag-chip';
           chip.textContent = t.name;
           chip.title = t.name;
-          chip.style.background = t.color || 'rgba(255,255,255,0.06)';
+          const bg = t.color || 'rgba(255,255,255,0.06)';
+          chip.style.background = bg;
+          chip.style.color = getContrastTextColor(bg);
+          chip.style.border = '1px solid rgba(0,0,0,0.06)'; // subtle border for readability
           chips.appendChild(chip);
         }
         if (pTags.length > MAX_CHIPS_TO_SHOW) {
@@ -429,7 +710,11 @@ function ensureTagsClosedOnModeChange() {
 
   /* UI events */
   // Open panel on hover and focus the search input (unless add/edit or settings are open).
+  // Open panel on hover and focus the search input (unless add/edit or settings are open).
   hotzone.addEventListener('mouseenter', () => {
+    // attach a single backdrop when opening the panel
+    attachPanelBackdrop();
+
     showPanel();
     setTimeout(() => {
       try {
@@ -443,6 +728,8 @@ function ensureTagsClosedOnModeChange() {
       } catch (e) {}
     }, 60);
   });
+
+
 
   // Tags button toggle
   function renderTagsList() {
@@ -517,7 +804,18 @@ function ensureTagsClosedOnModeChange() {
       } else {
         const name = document.createElement('div'); name.className = 'tag-name';
         name.textContent = t.name.length > 30 ? t.name.slice(0,27)+'…' : t.name;
-        name.style.whiteSpace = 'nowrap'; name.style.overflow = 'hidden'; name.style.textOverflow = 'ellipsis';
+        name.style.whiteSpace = 'nowrap';
+        name.style.overflow = 'hidden';
+        name.style.textOverflow = 'ellipsis';
+
+        // apply color to the tag name text, and give the row a faint tinted background for that tag
+        try {
+          name.style.color = t.color || '';
+          // faint background using the color (very subtle)
+          const bg = tintBackground(t.color || '#000', 0.06);
+          if (bg) row.style.background = bg;
+        } catch (e) { /* ignore styling errors */ }
+
         nameWrap.appendChild(name);
       }
 
@@ -528,32 +826,37 @@ function ensureTagsClosedOnModeChange() {
       tick.innerHTML = displayCtx === 'list' ? (isSelectedInList ? '✓' : '') : (isSelectedInDraft ? '✓' : '');
 
       // assemble row (order: swatch, name, tick, controls)
-      row.appendChild(sw); row.appendChild(nameWrap); row.appendChild(tick);
+      // row.appendChild(sw);
+       row.appendChild(nameWrap); row.appendChild(tick);
 
       // If editMode: add color control, drag handle and delete button
       if (editMode) {
-        // color control
+        // color control -> open our palette anchored to the row
         const colorBtn = document.createElement('button');
         colorBtn.type = 'button';
-        colorBtn.className = 'ctrl-btn';
+        colorBtn.className = 'ctrl-btn tag-color-btn';
         colorBtn.title = 'Change color';
         colorBtn.textContent = '●';
         colorBtn.style.padding = '4px';
+        colorBtn.style.minWidth = '28px';
+        colorBtn.style.display = 'inline-flex';
+        colorBtn.style.alignItems = 'center';
+        colorBtn.style.justifyContent = 'center';
+
         colorBtn.addEventListener('click', (ev) => {
           ev.stopPropagation();
-          // create temporary color input
-          const colorInput = document.createElement('input');
-          colorInput.type = 'color';
-          colorInput.value = t.color || '#8fb7ff';
-          colorInput.style.position = 'fixed';
-          colorInput.style.left = '-9999px';
-          document.body.appendChild(colorInput);
-          colorInput.addEventListener('input', async () => {
-            await recolorTag(t.id, colorInput.value);
-          });
-          colorInput.click();
-          setTimeout(()=>colorInput.remove(), 1200);
+          ev.preventDefault();
+          // close any open native palette first
+          closeColorPalette();
+          // open our palette anchored to the row element
+          openColorPaletteFor(t.id, row);
         });
+
+        row.appendChild(colorBtn);
+
+
+
+
         row.appendChild(colorBtn);
 
         // drag handle
@@ -647,7 +950,15 @@ function ensureTagsClosedOnModeChange() {
       btn.className = 'tag-select';
       btn.title = t.name;
       btn.textContent = t.name;
-      btn.style.background = t.color || '#cccccc';
+      const bg = t.color || '#cccccc';
+      btn.style.background = bg;
+      btn.style.color = getContrastTextColor(bg);
+      btn.style.border = '1px solid rgba(0,0,0,0.06)';
+      btn.style.padding = '6px 8px';
+      btn.style.borderRadius = '999px';
+      btn.style.whiteSpace = 'nowrap';
+      btn.style.overflow = 'hidden';
+      btn.style.textOverflow = 'ellipsis';
       btn.dataset.id = t.id;
 
       // determine whether selected for current draft/edit
@@ -936,8 +1247,20 @@ function ensureTagsClosedOnModeChange() {
   });
 
   // show/hide add/settings helpers
-  function showPanel() { panel.classList.add('open'); resetSelection(); ensureTagsClosedOnModeChange();}
-  function hidePanel() { if (!isAddingOrEditing && !tagsDropdownOpen) panel.classList.remove('open'); ensureTagsClosedOnModeChange();}
+  function showPanel() {
+    // attach backdrop when panel opens
+    attachPanelBackdrop();
+    panel.classList.add('open');
+    resetSelection();
+    ensureTagsClosedOnModeChange();
+  }
+
+  function hidePanel() {
+    // remove backdrop when panel closes
+    removePanelBackdrop();
+    if (!isAddingOrEditing && !tagsDropdownOpen) panel.classList.remove('open');
+    ensureTagsClosedOnModeChange();
+  }
 
   function showAddArea(prefillTitle = '', prefillQuick = '', prefillBody = '') {
     
@@ -1102,15 +1425,22 @@ function ensureTagsClosedOnModeChange() {
   // clicking outside: close add/settings and tags dropdown
   document.addEventListener('mousedown', (ev) => {
     if (!panel.classList.contains('open')) return;
-    const path = (ev as any).composedPath ? (ev as any).composedPath() : (ev as any).path || [];
-    if (Array.isArray(path) && (path.includes(panel) || path.includes(host))) return;
+
+    const path = (ev as any).composedPath ? (ev as any).composedPath() : (ev as any).path || [ev.target];
+
+    // if the click touched the panel or host (or their descendants / shadow hosts), treat as inside
+    if (pathTouches(path, [panel, host])) return;
+
+    // fallback: use bounding rect with a small tolerance (keeps previous behavior)
     const rect = panel.getBoundingClientRect();
     if (isPointInsideExtendedRect((ev as MouseEvent).clientX, (ev as MouseEvent).clientY, rect, CLOSE_TOLERANCE_PX)) return;
+
     hideAddArea();
     hideSettingsArea();
     closeTagsDropdown();
     panel.classList.remove('open');
   });
+
 
   function isPointInsideExtendedRect(x: number, y: number, rect: DOMRect, tol: number) {
     return x >= (rect.left - tol) && x <= (rect.right + tol) && y >= (rect.top - tol) && y <= (rect.bottom + tol);
@@ -1139,14 +1469,14 @@ function ensureTagsClosedOnModeChange() {
 
   // toggle via message
   chrome.runtime.onMessage.addListener((msg: any) => {
-    if (msg?.type === 'TOGGLE_POPUP') {
       if (!panel.classList.contains('open')) {
+        attachPanelBackdrop();
         showPanel();
         setTimeout(() => searchInput?.focus(), 60);
       } else {
         hidePanel();
       }
-    }
+
   });
 
   // resize handles
