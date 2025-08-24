@@ -43,6 +43,8 @@ export async function renderUI(opts: {
   const panel = shadow.getElementById('panel') as HTMLElement;
   const list = shadow.getElementById('list') as HTMLElement;
   const addArea = shadow.getElementById('add-area') as HTMLElement;
+  const addTagsContainer = shadow.getElementById('add-tags') as HTMLElement;
+
   const settingsArea = shadow.getElementById('settings-area') as HTMLElement;
   const inputTitle = shadow.getElementById('input-title') as HTMLInputElement;
   const inputQuick = shadow.getElementById('input-quick') as HTMLInputElement;
@@ -70,6 +72,16 @@ export async function renderUI(opts: {
   const sCancel = shadow.getElementById('s-cancel') as HTMLButtonElement;
 
   const inputElements = [inputTitle, inputQuick, inputBody, searchInput, sFontSize, sTheme, sHotpos];
+  // Prevent key events from leaking to global handlers when user is typing inside the panel.
+  const stopBubbleHandler = (ev: KeyboardEvent) => {
+    if (!panel.classList.contains('open')) return;
+    // Let the input itself receive default behavior (typing) but stop propagation to document
+    ev.stopPropagation();
+  };
+  panel.addEventListener('keydown', stopBubbleHandler, false);
+  panel.addEventListener('keypress', stopBubbleHandler, false);
+  panel.addEventListener('keyup', stopBubbleHandler, false);
+
   let isAddingOrEditing = false;
   let editingId: string | null = null;
   let draggedId: string | null = null;
@@ -96,6 +108,27 @@ export async function renderUI(opts: {
     if (!host.style.getPropertyValue('--font-size')) host.style.setProperty('--font-size', '13px');
     try { (shadow.getElementById('panel') as HTMLElement).style.fontSize = host.style.getPropertyValue('--font-size') || '13px'; } catch {}
   }
+
+  function getTagsDropdownContext(): 'list' | 'edit' {
+    // If the add/edit area is open, dropdown acts on prompt assignment (edit/draft)
+    if (addArea.classList.contains('open')) return 'edit';
+    return 'list';
+  }
+
+  // Close tags dropdown whenever UI mode changes (entering add/edit or settings)
+function ensureTagsClosedOnModeChange() {
+  // If tagsEditMode was left enabled, disable it when changing UI modes.
+  if (tagsEditMode) {
+    tagsEditMode = false;
+    try { tagsEditBtn.textContent = 'Edit'; } catch {}
+  }
+  if (tagsDropdown && tagsDropdown.classList.contains('open')) {
+    closeTagsDropdown();
+  }
+}
+
+
+
 
   applySettingsToHost();
 
@@ -125,6 +158,62 @@ export async function renderUI(opts: {
   async function savePrompts() {
     try { await setStorage({ [PROMPTS_KEY]: prompts }); } catch (e) { console.warn('Failed saving prompts', e); }
   }
+  // ---------- Tag helpers: rename, recolor, delete ----------
+  async function renameTag(id: string, newName: string) {
+    const nm = stripHTMLTags((newName || '').trim());
+    if (!nm) return false;
+    if (tagNameExists(nm, id)) { showToast('Tag name already exists'); return false; }
+    const idx = tags.findIndex(t => t.id === id);
+    if (idx === -1) return false;
+    tags[idx] = { ...tags[idx], name: nm };
+    await saveTags();
+    renderAddTags();
+    renderTagsList();
+    buildList();
+    return true;
+  }
+
+  async function recolorTag(id: string, color: string) {
+    const idx = tags.findIndex(t => t.id === id);
+    if (idx === -1) return false;
+    tags[idx] = { ...tags[idx], color };
+    await saveTags();
+    renderAddTags();
+    renderTagsList();
+    buildList();
+    return true;
+  }
+
+  async function deleteTag(id: string) {
+    const idx = tags.findIndex(t => t.id === id);
+    if (idx === -1) return false;
+    const name = tags[idx].name;
+    if (!confirm(`Delete tag "${name}"? This will remove it from all prompts.`)) return false;
+    // remove tag
+    tags.splice(idx, 1);
+    // remove references on prompts
+    for (const p of prompts) {
+      if (Array.isArray(p.tags) && p.tags.includes(id)) {
+        p.tags = p.tags.filter(x => x !== id);
+      }
+    }
+    // persist
+    await Promise.all([ saveTags(), savePrompts() ]);
+    // update selected/draft selections
+    selectedTagIds = selectedTagIds.filter(x => x !== id);
+    draftPromptTagIds = (draftPromptTagIds || []).filter(x => x !== id);
+    renderAddTags();
+    renderTagsList();
+    buildList();
+    showToast('Tag deleted');
+    return true;
+  }
+  // -----------------------------------------------------------
+
+
+
+
+
   function persistSelectedTags() {
     try { sessionStorage.setItem(SELECTED_TAGS_SESSION_KEY, JSON.stringify(selectedTagIds)); } catch (e) {}
     // update T button visual
@@ -357,139 +446,235 @@ export async function renderUI(opts: {
 
   // Tags button toggle
   function renderTagsList() {
-    tagsList.innerHTML = '';
-    // sort by order ascending then name fallback
-    tags = tags.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name));
-    if (!tags.length) {
+  const displayCtx = getTagsDropdownContext(); // 'list' | 'edit'
+  let editMode = false;
+
+  if (displayCtx === 'list') {
+    editMode = tagsEditMode;   // only allow toggling here
+    tagsClearBtn.style.display = '';
+    tagsEditBtn.style.display = '';
+    tagsNewBtn.style.display = '';
+  } else {
+    editMode = false;          // always normal view in prompt edit/new
+    tagsClearBtn.style.display = 'none';
+    tagsEditBtn.style.display = 'none';
+    tagsNewBtn.style.display = 'none';
+  }
+
+  tagsList.innerHTML = '';
+
+    // sort by order then name
+    const sortedTags = tags.slice().sort((a,b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name));
+    if (!sortedTags.length) {
       tagsList.innerHTML = '<div class="small" style="padding:6px 4px">No tags yet. Click New to create one.</div>';
       return;
     }
 
-    for (let i = 0; i < tags.length; i++) {
-      const t = tags[i];
-      const row = document.createElement('div'); row.className = 'tag-row'; row.dataset.id = t.id;
-      const sw = document.createElement('div'); sw.className = 'tag-swatch'; sw.style.background = t.color || '#cccccc';
-      const name = document.createElement('div'); name.className = 'tag-name'; name.textContent = t.name;
-      const tick = document.createElement('div'); tick.className = 'tag-tick'; tick.innerHTML = isTagSelected(t.id) ? '✓' : '';
+    // container for rows
+    for (let i = 0; i < sortedTags.length; i++) {
+      const t = sortedTags[i];
+      const row = document.createElement('div');
+      row.className = 'tag-row';
+      row.dataset.id = t.id;
+      row.tabIndex = 0;
+      row.style.display = 'flex';
+      row.style.alignItems = 'center';
+      row.style.gap = '8px';
+      row.style.padding = '6px';
+      row.style.borderRadius = '6px';
+      row.style.cursor = 'pointer';
+      row.style.userSelect = 'none';
+      // prevent outside click handler from closing dropdown
+      row.addEventListener('click', (ev) => ev.stopPropagation());
 
-      row.appendChild(sw); row.appendChild(name); row.appendChild(tick);
+      // color swatch (clickable in edit mode)
+      const sw = document.createElement('div'); sw.className = 'tag-swatch'; sw.style.width = '18px'; sw.style.height = '18px'; sw.style.borderRadius = '4px';
+      sw.style.background = t.color || '#cccccc';
+      sw.title = 'Color';
+      sw.addEventListener('click', (ev) => ev.stopPropagation()); // clicks handled below
 
-      // Normal mode click toggles selection
-      row.addEventListener('click', (ev) => {
-        if (tagsEditMode) return;
-        ev.stopPropagation();
-        toggleTagSelection(t.id);
-      });
-
-      // Edit-mode controls
-      if (tagsEditMode) {
-        // replace name with input
+      // name / input
+      const nameWrap = document.createElement('div'); nameWrap.style.flex = '1'; nameWrap.style.minWidth = '0';
+      if (editMode) {
         const input = document.createElement('input');
         input.type = 'text';
         input.value = t.name;
-        input.style.flex = '1';
-        input.addEventListener('keydown', async (kev) => {
-          if (kev.key === 'Enter') {
-            kev.preventDefault();
-            input.blur();
-          }
+        input.maxLength = 80;
+        input.style.width = '100%';
+        input.style.fontSize = '13px';
+        input.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
+          ev.stopPropagation();
         });
         input.addEventListener('blur', async () => {
-          const newName = stripHTMLTags(input.value.trim());
-          if (!newName) { showToast('Tag name required'); input.value = t.name; return; }
-          if (tagNameExists(newName, t.id)) { showToast('Tag name already exists'); input.value = t.name; return; }
-          if (newName !== t.name) {
-            t.name = newName;
-            await saveTags();
-            renderTagsList();
-            buildList();
+          // commit rename
+          if (input.value.trim() !== t.name) {
+            await renameTag(t.id, input.value);
           }
         });
+        input.addEventListener('click', (ev) => ev.stopPropagation());
+        nameWrap.appendChild(input);
+      } else {
+        const name = document.createElement('div'); name.className = 'tag-name';
+        name.textContent = t.name.length > 30 ? t.name.slice(0,27)+'…' : t.name;
+        name.style.whiteSpace = 'nowrap'; name.style.overflow = 'hidden'; name.style.textOverflow = 'ellipsis';
+        nameWrap.appendChild(name);
+      }
 
-        // color input
-        const colorInput = document.createElement('input');
-        colorInput.type = 'color';
-        colorInput.value = t.color || '#cccccc';
-        colorInput.style.marginLeft = '6px';
-        colorInput.addEventListener('input', async () => {
-          t.color = colorInput.value;
-          sw.style.background = t.color;
-          await saveTags();
-          buildList();
+      // tick / selection indicator
+      const tick = document.createElement('div'); tick.className = 'tag-tick';
+      const isSelectedInList = (selectedTagIds || []).includes(t.id);
+      const isSelectedInDraft = (draftPromptTagIds || []).includes(t.id);
+      tick.innerHTML = displayCtx === 'list' ? (isSelectedInList ? '✓' : '') : (isSelectedInDraft ? '✓' : '');
+
+      // assemble row (order: swatch, name, tick, controls)
+      row.appendChild(sw); row.appendChild(nameWrap); row.appendChild(tick);
+
+      // If editMode: add color control, drag handle and delete button
+      if (editMode) {
+        // color control
+        const colorBtn = document.createElement('button');
+        colorBtn.type = 'button';
+        colorBtn.className = 'ctrl-btn';
+        colorBtn.title = 'Change color';
+        colorBtn.textContent = '●';
+        colorBtn.style.padding = '4px';
+        colorBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          // create temporary color input
+          const colorInput = document.createElement('input');
+          colorInput.type = 'color';
+          colorInput.value = t.color || '#8fb7ff';
+          colorInput.style.position = 'fixed';
+          colorInput.style.left = '-9999px';
+          document.body.appendChild(colorInput);
+          colorInput.addEventListener('input', async () => {
+            await recolorTag(t.id, colorInput.value);
+          });
+          colorInput.click();
+          setTimeout(()=>colorInput.remove(), 1200);
         });
+        row.appendChild(colorBtn);
 
-        // drag handle (simple)
-        const dragHandle = document.createElement('div');
-        dragHandle.className = 'drag-handle';
-        dragHandle.innerHTML = '&#x2261;';
-        dragHandle.draggable = true;
-        dragHandle.style.marginLeft = '8px';
-        dragHandle.addEventListener('dragstart', (ev) => {
-          draggedId = t.id;
+        // drag handle
+        const handle = document.createElement('div');
+        handle.textContent = '≡';
+        handle.title = 'Drag to reorder';
+        handle.style.cursor = 'grab';
+        handle.draggable = true;
+        // drag handlers for tag reorder
+        handle.addEventListener('dragstart', (ev: DragEvent) => {
+          ev.stopPropagation();
+          (ev.dataTransfer as any)?.setData?.('text/plain', t.id);
+          // mark dragged visually
           row.classList.add('dragging');
-          try { ev.dataTransfer?.setData('text/plain', t.id); } catch {}
         });
-        dragHandle.addEventListener('dragend', () => {
-          draggedId = null;
-          shadow.querySelectorAll('.tag-row.dragging').forEach(el => el.classList.remove('dragging'));
+        handle.addEventListener('dragend', (ev: DragEvent) => {
+          ev.stopPropagation();
+          row.classList.remove('dragging');
+          // If we dropped somewhere else, the global drop handler will call moveTagToIndex
         });
+        // allow dropping above/below
+        row.addEventListener('dragover', (ev) => { ev.preventDefault(); ev.stopPropagation(); });
+        row.addEventListener('drop', (ev: DragEvent) => {
+          ev.preventDefault(); ev.stopPropagation();
+          const srcId = (ev.dataTransfer as any)?.getData('text/plain') ?? null;
+          if (!srcId || srcId === t.id) return;
+          // compute target index based on sortedTags position
+          const beforeRects = getRectsMap(shadow);
+          const targetIndex = sortedTags.findIndex(x => x.id === t.id);
+          moveTagToIndex(srcId, targetIndex, beforeRects);
+        });
+        row.appendChild(handle);
 
         // delete button
-        const delBtn = document.createElement('button');
-        delBtn.className = 'ctrl-btn';
-        delBtn.textContent = 'Delete';
-        delBtn.style.marginLeft = '8px';
-        delBtn.addEventListener('click', async (ev) => {
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'ctrl-btn';
+        del.textContent = 'Delete';
+        del.addEventListener('click', async (ev) => {
           ev.stopPropagation();
-          if (!confirm(`Delete tag "${t.name}"?`)) return;
-          const idToDelete = t.id;
-          // remove tag
-          tags = tags.filter(x => x.id !== idToDelete);
-          // remove tag from prompts
-          prompts = prompts.map(p => ({ ...p, tags: (p.tags || []).filter(x => x !== idToDelete) }));
-          // selectedTags remove
-          selectedTagIds = selectedTagIds.filter(x => x !== idToDelete);
-          persistSelectedTags();
-          await saveTags();
-          await savePrompts();
-          buildList();
-          renderTagsList();
-          showToast('Tag deleted');
+          await deleteTag(t.id);
         });
-
-        // construct row for edit-mode
-        row.innerHTML = '';
-        row.appendChild(sw);
-        row.appendChild(input);
-        row.appendChild(colorInput);
-        row.appendChild(dragHandle);
-        row.appendChild(delBtn);
-
-        // allow dropping to reorder
-        row.addEventListener('dragover', (ev) => {
-          ev.preventDefault();
-          const ph = ensurePlaceholder();
-          if (row.parentElement && row.parentElement.querySelector('.placeholder') !== row) row.parentElement.insertBefore(ph, row.nextSibling);
-        });
-        row.addEventListener('drop', (ev) => {
-          ev.preventDefault();
-          const srcId = draggedId ?? ev.dataTransfer?.getData('text/plain') ?? null;
-          if (!srcId) return;
-          const ph = tagsList.querySelector('.placeholder');
-          const children = Array.from(tagsList.children);
-          const idx = children.indexOf(ph);
-          let targetIndex = 0;
-          for (let j = 0; j < idx; j++) { if ((children[j] as HTMLElement).classList.contains('tag-row')) targetIndex++; }
-          // compute insertion index in tags array by order mapping
-          const before = getRectsMap(shadow);
-          moveTagToIndex(srcId, targetIndex, before);
-          removePlaceholder();
+        row.appendChild(del);
+      } else {
+        // normal mode: clicking toggles selection (list context)
+        row.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          if (displayCtx === 'list') toggleTagSelection(t.id);
+          else {
+            // edit context for drafts: toggle in draftPromptTagIds
+            const idx = (draftPromptTagIds || []).indexOf(t.id);
+            if (idx === -1) draftPromptTagIds.push(t.id);
+            else draftPromptTagIds.splice(idx, 1);
+            renderAddTags();
+            renderTagsList();
+          }
         });
       }
+
+      // keyboard support: Enter/Space toggles (or commits) and Arrow keys handled globally
+      row.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault(); ev.stopPropagation();
+          // if edit mode and there's an input, blur it to commit
+          if (editMode) {
+            const input = row.querySelector('input[type="text"]') as HTMLInputElement | null;
+            if (input) input.blur();
+          } else {
+            row.click();
+          }
+        }
+      });
 
       tagsList.appendChild(row);
     }
   }
+
+  
+  function renderAddTags() {
+    if (!addTagsContainer) return;
+    addTagsContainer.innerHTML = '';
+    if (!tags || tags.length === 0) {
+      addTagsContainer.innerHTML = '<div style="opacity:0.7;font-size:12px">No tags yet</div>';
+      return;
+    }
+
+    // Use the tag order defined in tags array (they should already be sorted by order)
+    for (const t of tags) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tag-select';
+      btn.title = t.name;
+      btn.textContent = t.name;
+      btn.style.background = t.color || '#cccccc';
+      btn.dataset.id = t.id;
+
+      // determine whether selected for current draft/edit
+      const wasSelected = (draftPromptTagIds || []).includes(t.id);
+      if (wasSelected) btn.classList.add('selected');
+
+      btn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const id = t.id;
+        if (!id) return;
+        const idx = (draftPromptTagIds || []).indexOf(id);
+        if (idx === -1) {
+          draftPromptTagIds.push(id);
+          btn.classList.add('selected');
+        } else {
+          draftPromptTagIds.splice(idx, 1);
+          btn.classList.remove('selected');
+        }
+      });
+
+      addTagsContainer.appendChild(btn);
+    }
+  }
+
+
+
 
   function moveTagToIndex(srcId: string, targetIndex: number, beforeRects?: Map<string, DOMRect>) {
     const srcIndex = tags.findIndex(x => x.id === srcId);
@@ -508,18 +693,57 @@ export async function renderUI(opts: {
   }
 
   function openTagsDropdown() {
+    const ctx = getTagsDropdownContext(); // 'list' or 'edit'
+    if (ctx === 'edit') {
+      // Force-disable list-edit mode when dropdown is opened for prompt edit/creation
+      tagsEditMode = false;
+      tagsEditBtn.textContent = 'Edit';
+    }
+
     tagsDropdown.classList.add('open');
     tagsDropdown.setAttribute('aria-hidden', 'false');
-    renderTagsList();
-    tagsBtn.classList.add('active');
     tagsDropdownOpen = true;
+
+    // Hide top controls in edit mode (per your request)
+    if (ctx === 'edit') {
+      tagsClearBtn.style.display = 'none';
+      tagsEditBtn.style.display = 'none';
+      tagsNewBtn.style.display = 'none';
+    } else {
+      tagsClearBtn.style.display = '';
+      tagsEditBtn.style.display = '';
+      tagsNewBtn.style.display = '';
+    }
+
+    // render with context-aware selection source
+    renderTagsList();
+
+    // update T button visual: in list mode reflect filters, in edit mode reflect draft tags presence
+    if (ctx === 'list') {
+      tagsBtn.classList.toggle('active', selectedTagIds.length > 0);
+    } else {
+      tagsBtn.classList.toggle('active', (draftPromptTagIds || []).length > 0);
+    }
   }
+
+
+
   function closeTagsDropdown() {
     tagsDropdown.classList.remove('open');
     tagsDropdown.setAttribute('aria-hidden', 'true');
-    tagsBtn.classList.remove('active');
     tagsDropdownOpen = false;
+
+    // preserve visual active state based on selected filters or draft tags
+    const ctx = getTagsDropdownContext();
+    if (ctx === 'list') {
+      tagsBtn.classList.toggle('active', selectedTagIds.length > 0);
+    } else {
+      tagsBtn.classList.toggle('active', (draftPromptTagIds || []).length > 0);
+    }
   }
+
+
+
   let tagsDropdownOpen = false;
   let tagsEditMode = false;
 
@@ -584,6 +808,7 @@ export async function renderUI(opts: {
           draftPromptTagIds = Array.from(new Set([...(draftPromptTagIds || []), newTag.id]));
         }
       }
+      renderAddTags();
       renderTagsList();
       buildList();
       showToast('Tag created');
@@ -597,6 +822,44 @@ export async function renderUI(opts: {
 
   // When the search is focused and we're on the list page, use keys for list navigation.
   searchInput.addEventListener('input', () => buildList());
+  // When the search box is focused and we're on the list page, use keys for list navigation.
+  // This mirrors the previous behavior where arrows/Enter operate on the list even while typing.
+  searchInput.addEventListener('keydown', async (ev: KeyboardEvent) => {
+    if (!panel.classList.contains('open')) return;
+    if (isAddingOrEditing || settingsArea.classList.contains('open') || tagsDropdownOpen) return;
+
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (!filteredPrompts || filteredPrompts.length === 0) return;
+      if (ev.key === 'ArrowDown') selectedIndex = (selectedIndex + 1) % filteredPrompts.length;
+      else selectedIndex = (selectedIndex - 1 + filteredPrompts.length) % filteredPrompts.length;
+      highlightSelection();
+      return;
+    }
+
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (!filteredPrompts || !filteredPrompts[selectedIndex]) {
+        showToast('No prompt selected.');
+        return;
+      }
+      const prompt = filteredPrompts[selectedIndex];
+      const ok = await copyToClipboard(prompt.text);
+      showToast(ok ? 'Copied' : 'Copy failed');
+      // keep focus in searchInput after copying
+      try { (searchInput as HTMLInputElement).focus(); } catch {}
+      return;
+    }
+
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      panel.classList.remove('open');
+    }
+  });
+
 
   // Add keyboard behavior when tags dropdown open: make sure up/down keys navigate tags
   document.addEventListener('keydown', (ev: KeyboardEvent) => {
@@ -673,11 +936,14 @@ export async function renderUI(opts: {
   });
 
   // show/hide add/settings helpers
-  function showPanel() { panel.classList.add('open'); resetSelection(); }
-  function hidePanel() { if (!isAddingOrEditing && !tagsDropdownOpen) panel.classList.remove('open'); }
+  function showPanel() { panel.classList.add('open'); resetSelection(); ensureTagsClosedOnModeChange();}
+  function hidePanel() { if (!isAddingOrEditing && !tagsDropdownOpen) panel.classList.remove('open'); ensureTagsClosedOnModeChange();}
 
   function showAddArea(prefillTitle = '', prefillQuick = '', prefillBody = '') {
+    
     isAddingOrEditing = true;
+    ensureTagsClosedOnModeChange();
+
     inputTitle.value = stripHTMLTags(prefillTitle);
     inputQuick.value = stripHTMLTags(prefillQuick);
     inputBody.value = stripHTMLTags(prefillBody);
@@ -729,7 +995,13 @@ export async function renderUI(opts: {
       // creating new prompt -> start with draft tags if any
       // draftPromptTagIds remains as is (user may have added tags from tag dropdown)
     }
+    renderAddTags();
+
   }
+
+
+
+
 
   function hideAddArea() {
     isAddingOrEditing = false;
@@ -756,6 +1028,8 @@ export async function renderUI(opts: {
     sHotpos.value = settings.hotspotPosition;
     list.style.display = 'none'; addArea.classList.remove('open');
     panel.classList.add('mode-settings'); panel.classList.remove('mode-add');
+    ensureTagsClosedOnModeChange();
+
   }
 
   function hideSettingsArea() {
@@ -788,7 +1062,7 @@ export async function renderUI(opts: {
     if (editingId != null) {
       const idx = prompts.findIndex(x => x.id === editingId);
       if (idx !== -1) {
-        prompts[idx] = { ...prompts[idx], title, quick, text, tags: Array.from(new Set([...(draftPromptTagIds || []), ...(prompts[idx].tags || [])])) };
+        prompts[idx] = { ...prompts[idx], title, quick, text, tags: Array.from(new Set(draftPromptTagIds || [])) };
       }
     } else {
       const newPrompt: Prompt = { id: uid(), title, quick, text, tags: Array.from(new Set(draftPromptTagIds || [])) };
@@ -856,6 +1130,8 @@ export async function renderUI(opts: {
     }
     if (changes[TAGS_KEY]) {
       tags = changes[TAGS_KEY].newValue ?? tags;
+      renderAddTags();
+
       renderTagsList();
       buildList();
     }

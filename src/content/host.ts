@@ -354,6 +354,32 @@ export function createOrGetHost() {
         padding: 6px;
       }
       .icon-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+      /* Tag picker styles in add/edit area */
+      .add-tags .tag-select {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        padding:4px 8px;
+        border-radius:999px;
+        font-size:12px;
+        font-weight:600;
+        cursor:pointer;
+        border: 1px solid rgba(255,255,255,0.04);
+        min-height:22px;
+        max-width:160px;
+        overflow:hidden;
+        white-space:nowrap;
+        text-overflow:ellipsis;
+      }
+      .add-tags .tag-select.selected {
+        box-shadow: 0 6px 18px rgba(0,0,0,0.14);
+        outline: 2px solid rgba(255,255,255,0.06);
+      }
+    .tag-row:focus, .tag-row.focused {
+      outline: 2px solid rgba(143,183,255,0.18);
+      border-radius: 8px;
+    }
+
 
 
     </style>
@@ -393,7 +419,9 @@ export function createOrGetHost() {
         <input id="input-title" type="text" placeholder="Prompt title" />
         <input id="input-quick" type="text" placeholder="Quick search code (optional)" />
         <textarea id="input-body" placeholder="Full prompt text" style="height: 177px;"></textarea>
-        <div style="display:flex;gap:8px;justify-content:flex-end">
+
+
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
           <button id="cancel-btn" class="ctrl-btn">Cancel</button>
           <button id="save-btn" class="ctrl-btn">Save</button>
         </div>
