@@ -65,6 +65,31 @@ export async function renderUI(opts: {
   const tagsNewBtn = shadow.getElementById('tags-new') as HTMLButtonElement;
   const tagsList = shadow.getElementById('tags-list') as HTMLElement;
 
+  // Handle mousedown *inside* tagsDropdown (runs inside shadow)
+  // - If click is inside the color palette: do nothing (palette already stops propagation).
+  // - If click is inside dropdown but outside palette: close only the palette (if open), and stopPropagation
+  //   so the document handler doesn't treat this as a click *outside* and close the dropdown itself.
+  tagsDropdown.addEventListener('mousedown', (ev) => {
+    // Get composed path (works inside the shadow)
+    const path = (ev as any).composedPath ? (ev as any).composedPath() : [ev.target];
+
+    // If the click was inside the palette, let the palette handler handle it (it already stops propagation)
+    if (colorPaletteEl && pathTouches(path, [colorPaletteEl])) {
+      return;
+    }
+
+    // Click is inside tagsDropdown but NOT inside palette:
+    // Close palette (if open) but keep dropdown open.
+    if (colorPaletteEl) {
+      closeColorPalette();
+    }
+
+    // Prevent the event from reaching the document handler which would otherwise treat this as "outside"
+    ev.stopPropagation();
+  });
+
+
+
   const sFontSize = shadow.getElementById('s-font-size') as HTMLInputElement;
   const sTheme = shadow.getElementById('s-theme') as HTMLSelectElement;
   const sHotpos = shadow.getElementById('s-hotspot-pos') as HTMLSelectElement;
@@ -142,18 +167,10 @@ try {
       background: 'transparent',
       pointerEvents: 'auto'
     });
-    b.addEventListener('mousedown', (ev) => {
-      // stopPropagation so document-level handlers don't double-run
-      ev.stopPropagation();
 
-      // close everything and remove the backdrop
-      hideAddArea();
-      hideSettingsArea();
-      closeTagsDropdown();
-      closeColorPalette();
-      panel.classList.remove('open');
-      removePanelBackdrop();
-    });
+
+
+
     panelBackdrop = b;
     return b;
   }
@@ -314,7 +331,7 @@ try {
     }
 
     // clicking inside palette shouldn't close tags dropdown
-    pal.addEventListener('click', (ev) => ev.stopPropagation());
+    pal.addEventListener('mousedown', (ev) => ev.stopPropagation());
     // close on Escape
     pal.addEventListener('keydown', (ev: KeyboardEvent) => {
       if (ev.key === 'Escape') { ev.stopPropagation(); closeColorPalette(); }
@@ -354,23 +371,37 @@ try {
     colorPaletteOpenForTagId = null;
   }
 
-  // Close palette when clicking outside the tagsDropdown or on global mousedown
-  // Close palette when clicking outside — robust to shadow/composedPath and checks palette, dropdown, panel, host.
-  // NOTE: do NOT use capture here (no `true`), so target/handlers get a chance to run first.
-  // Close palette when clicking outside the tagsDropdown or on global mousedown
-  document.addEventListener('mousedown', (ev) => {
-      if (!colorPaletteEl) return;
+// Document-level outside-click handler: runs only when panel is open and the event bubbles up here.
+// If the event reaches this handler it means the click was NOT handled inside the dropdown/palette.
+document.addEventListener('mousedown', (ev) => {
+  const isPanelOpen = panel.classList.contains('open');
+  if (!isPanelOpen) return;
 
-      // Prefer composedPath() when available (works with shadow DOM); fallback to [ev.target].
-      const path = (ev as any).composedPath ? (ev as any).composedPath() : [ev.target];
+  const path = (ev as any).composedPath ? (ev as any).composedPath() : [ev.target];
 
-      // robustly detect if event touched any of these elements (or their descendants /shadow hosts)
-      const clickedInside = pathTouches(path, [colorPaletteEl]);
-      if (clickedInside) return;
+  // If click is inside the panel (but didn't get handled inside dropdown), we may want to close dropdown
+  // only when click is outside the panel area. Here we treat clicks on panel/host as "inside", so we do nothing.
+  if (pathTouches(path, [panel, host])) {
+    // click is inside panel (but not inside dropdown/palette because those handlers stopped propagation)
+    // If dropdown was open but user clicked other parts of panel we should close the dropdown.
+    // (Optional) You can close tagsDropdown here; current behavior in your code closed tags dropdown
+    // when clicking other parts of panel; if you prefer to keep dropdown open when clicking panel body,
+    // skip the closeTagsDropdown() call.
+    if (tagsDropdown.classList.contains('open')) {
+      closeTagsDropdown();
+    }
+    return;
+  }
 
-      // Otherwise close the palette
-      closeColorPalette();
-    }, false /* no capture */);
+  // Click is outside the panel entirely -> close everything
+  hideAddArea();
+  hideSettingsArea();
+  if (tagsDropdown.classList.contains('open')) closeTagsDropdown();
+  if (colorPaletteEl) closeColorPalette();
+  panel.classList.remove('open');
+  removePanelBackdrop();
+}, false);
+
 
 
 
@@ -438,7 +469,8 @@ function ensureTagsClosedOnModeChange() {
   }
   // ---------- Tag helpers: rename, recolor, delete ----------
   async function renameTag(id: string, newName: string) {
-    const nm = stripHTMLTags((newName || '').trim());
+    // const nm = stripHTMLTags((newName || '').trim());
+    const nm = newName;
     if (!nm) return false;
     if (tagNameExists(nm, id)) { showToast('Tag name already exists'); return false; }
     const idx = tags.findIndex(t => t.id === id);
@@ -590,10 +622,18 @@ function ensureTagsClosedOnModeChange() {
 
     for (const p of filteredPrompts) {
       const row = document.createElement('div'); row.className = 'row'; if (!p.quick) row.classList.add('heading-row'); row.dataset.id = p.id;
+      row.addEventListener('click', async () => {
+        try {
+          await copyToClipboard(p.text);
+          showToast('Copied');
+        } catch {
+          showToast('Copy failed');
+        }
+      });
+
       const left = document.createElement('div'); left.className = 'left';
       const handle = document.createElement('div'); handle.className = 'drag-handle'; handle.innerHTML = '&#x2261;'; handle.draggable = true;
       const label = document.createElement('div'); label.className = 'label'; label.textContent = p.title;
-      label.addEventListener('click', async (ev) => { ev.stopPropagation(); try { await copyToClipboard(p.text); showToast('Copied'); } catch { showToast('Copy failed'); }});
       left.appendChild(handle); left.appendChild(label);
 
       // When a tag filter is active, show up to MAX_CHIPS_TO_SHOW chips on each row
@@ -642,7 +682,7 @@ function ensureTagsClosedOnModeChange() {
       handle.addEventListener('dragend', () => { draggedId = null; shadow.querySelectorAll('.row.dragging').forEach(el => el.classList.remove('dragging')); removePlaceholder(); });
 
       row.addEventListener('dragover', (ev) => { ev.preventDefault(); });
-      row.addEventListener('drop', (ev) => { ev.preventDefault(); removePlaceholder(); });
+      // row.addEventListener('drop', (ev) => { ev.preventDefault(); removePlaceholder(); });
     }
 
     const endSpacer = document.createElement('div'); endSpacer.style.minHeight = '12px';
@@ -692,13 +732,23 @@ function ensureTagsClosedOnModeChange() {
 
   function movePromptToIndex(srcId: string, targetIndex: number, beforeRects?: Map<string, DOMRect>) {
     const srcIndex = prompts.findIndex(x => x.id === srcId);
-    if (srcIndex === -1) return;
+    if (srcIndex === -1 || srcIndex === targetIndex) return; // also prevent drop on itself
+
     const [item] = prompts.splice(srcIndex, 1);
+
+    // FIX: Adjust the target index if we are moving an item downwards
+    let adjustedTargetIndex = targetIndex;
+    if (srcIndex < targetIndex) {
+      adjustedTargetIndex--;
+    }
+
     // if targetIndex > prompts.length, clamp
-    const clamped = Math.max(0, Math.min(targetIndex, prompts.length));
+    const clamped = Math.max(0, Math.min(adjustedTargetIndex, prompts.length));
     prompts.splice(clamped, 0, item);
     setStorage({ [PROMPTS_KEY]: prompts }).then(() => { buildAndAnimate(beforeRects); showToast('Order saved'); });
   }
+
+
 
   function buildAndAnimate(before?: Map<string, DOMRect>) {
     buildList();
@@ -772,13 +822,46 @@ function ensureTagsClosedOnModeChange() {
       row.style.cursor = 'pointer';
       row.style.userSelect = 'none';
       // prevent outside click handler from closing dropdown
-      row.addEventListener('click', (ev) => ev.stopPropagation());
 
       // color swatch (clickable in edit mode)
       const sw = document.createElement('div'); sw.className = 'tag-swatch'; sw.style.width = '18px'; sw.style.height = '18px'; sw.style.borderRadius = '4px';
       sw.style.background = t.color || '#cccccc';
       sw.title = 'Color';
       sw.addEventListener('click', (ev) => ev.stopPropagation()); // clicks handled below
+      if (editMode) {
+        // drag handle
+        const handle = document.createElement('div');
+        handle.textContent = '≡';
+        handle.title = 'Drag to reorder';
+        handle.style.cursor = 'grab';
+        handle.draggable = true;
+        // drag handlers for tag reorder
+        handle.addEventListener('dragstart', (ev: DragEvent) => {
+          ev.stopPropagation();
+          (ev.dataTransfer as any)?.setData?.('text/plain', t.id);
+          // mark dragged visually
+          row.classList.add('dragging');
+        });
+        handle.addEventListener('dragend', (ev: DragEvent) => {
+          ev.stopPropagation();
+          row.classList.remove('dragging');
+          // If we dropped somewhere else, the global drop handler will call moveTagToIndex
+        });
+        // allow dropping above/below
+        row.addEventListener('dragover', (ev) => { ev.preventDefault(); ev.stopPropagation(); });
+        row.addEventListener('drop', (ev: DragEvent) => {
+          ev.preventDefault(); ev.stopPropagation();
+          const srcId = (ev.dataTransfer as any)?.getData('text/plain') ?? null;
+          if (!srcId || srcId === t.id) return;
+          // compute target index based on sortedTags position
+          const beforeRects = getRectsMap(shadow);
+          const targetIndex = sortedTags.findIndex(x => x.id === t.id);
+          moveTagToIndex(srcId, targetIndex, beforeRects);
+        });
+        row.appendChild(handle);
+      }
+
+
 
       // name / input
       const nameWrap = document.createElement('div'); nameWrap.style.flex = '1'; nameWrap.style.minWidth = '0';
@@ -826,94 +909,69 @@ function ensureTagsClosedOnModeChange() {
       tick.innerHTML = displayCtx === 'list' ? (isSelectedInList ? '✓' : '') : (isSelectedInDraft ? '✓' : '');
 
       // assemble row (order: swatch, name, tick, controls)
-      // row.appendChild(sw);
-       row.appendChild(nameWrap); row.appendChild(tick);
-
+      if (editMode) {row.appendChild(sw);}
+      row.appendChild(nameWrap);
+      if(!editMode){row.appendChild(tick);}
       // If editMode: add color control, drag handle and delete button
       if (editMode) {
-        // color control -> open our palette anchored to the row
-        const colorBtn = document.createElement('button');
-        colorBtn.type = 'button';
-        colorBtn.className = 'ctrl-btn tag-color-btn';
-        colorBtn.title = 'Change color';
-        colorBtn.textContent = '●';
-        colorBtn.style.padding = '4px';
-        colorBtn.style.minWidth = '28px';
-        colorBtn.style.display = 'inline-flex';
-        colorBtn.style.alignItems = 'center';
-        colorBtn.style.justifyContent = 'center';
-
-        colorBtn.addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          ev.preventDefault();
-          // close any open native palette first
-          closeColorPalette();
-          // open our palette anchored to the row element
-          openColorPaletteFor(t.id, row);
-        });
-
-        row.appendChild(colorBtn);
 
 
 
 
-        row.appendChild(colorBtn);
 
-        // drag handle
-        const handle = document.createElement('div');
-        handle.textContent = '≡';
-        handle.title = 'Drag to reorder';
-        handle.style.cursor = 'grab';
-        handle.draggable = true;
-        // drag handlers for tag reorder
-        handle.addEventListener('dragstart', (ev: DragEvent) => {
-          ev.stopPropagation();
-          (ev.dataTransfer as any)?.setData?.('text/plain', t.id);
-          // mark dragged visually
-          row.classList.add('dragging');
-        });
-        handle.addEventListener('dragend', (ev: DragEvent) => {
-          ev.stopPropagation();
-          row.classList.remove('dragging');
-          // If we dropped somewhere else, the global drop handler will call moveTagToIndex
-        });
-        // allow dropping above/below
-        row.addEventListener('dragover', (ev) => { ev.preventDefault(); ev.stopPropagation(); });
-        row.addEventListener('drop', (ev: DragEvent) => {
-          ev.preventDefault(); ev.stopPropagation();
-          const srcId = (ev.dataTransfer as any)?.getData('text/plain') ?? null;
-          if (!srcId || srcId === t.id) return;
-          // compute target index based on sortedTags position
-          const beforeRects = getRectsMap(shadow);
-          const targetIndex = sortedTags.findIndex(x => x.id === t.id);
-          moveTagToIndex(srcId, targetIndex, beforeRects);
-        });
-        row.appendChild(handle);
+          
+          // color control -> open our palette anchored to the row
+          const colorBtn = document.createElement('button');
+          colorBtn.type = 'button';
+          colorBtn.className = 'ctrl-btn tag-color-btn';
+          colorBtn.title = 'Change color';
+          colorBtn.textContent = '●';
+          colorBtn.style.padding = '4px';
+          colorBtn.style.minWidth = '28px';
+          colorBtn.style.display = 'inline-flex';
+          colorBtn.style.alignItems = 'center';
+          colorBtn.style.justifyContent = 'center';
+
+          colorBtn.addEventListener('mousedown', (ev) => {
+            ev.stopPropagation();
+            ev.preventDefault();
+            // close any open native palette first
+            closeColorPalette();
+            // open our palette anchored to the row element
+            openColorPaletteFor(t.id, row);
+          });
+
+          row.appendChild(colorBtn);
+
+
 
         // delete button
         const del = document.createElement('button');
         del.type = 'button';
         del.className = 'ctrl-btn';
         del.textContent = 'Delete';
-        del.addEventListener('click', async (ev) => {
+        del.addEventListener('mousedown', async (ev) => {
           ev.stopPropagation();
           await deleteTag(t.id);
         });
         row.appendChild(del);
       } else {
         // normal mode: clicking toggles selection (list context)
-        row.addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          if (displayCtx === 'list') toggleTagSelection(t.id);
-          else {
-            // edit context for drafts: toggle in draftPromptTagIds
-            const idx = (draftPromptTagIds || []).indexOf(t.id);
-            if (idx === -1) draftPromptTagIds.push(t.id);
-            else draftPromptTagIds.splice(idx, 1);
-            renderAddTags();
-            renderTagsList();
-          }
-        });
+      row.addEventListener('mousedown', (ev) => {
+        ev.stopPropagation(); // Stop propagation first
+
+        if (getTagsDropdownContext() === 'list') {
+          if (!tagsEditMode) toggleTagSelection(t.id);
+        } else {
+          // edit context for drafts: toggle in draftPromptTagIds
+          const idx = (draftPromptTagIds || []).indexOf(t.id);
+          if (idx === -1) draftPromptTagIds.push(t.id);
+          else draftPromptTagIds.splice(idx, 1);
+          renderAddTags();
+          renderTagsList();
+        }
+      });
+
       }
 
       // keyboard support: Enter/Space toggles (or commits) and Arrow keys handled globally
@@ -1063,19 +1121,19 @@ function ensureTagsClosedOnModeChange() {
     if (!tagsDropdownOpen) openTagsDropdown(); else closeTagsDropdown();
   });
 
-  tagsClearBtn.addEventListener('click', (ev) => {
+  tagsClearBtn.addEventListener('mousedown', (ev) => {
     ev.stopPropagation();
     clearTagSelection();
   });
 
-  tagsEditBtn.addEventListener('click', (ev) => {
+  tagsEditBtn.addEventListener('mousedown', (ev) => {
     ev.stopPropagation();
     tagsEditMode = !tagsEditMode;
     tagsEditBtn.textContent = tagsEditMode ? 'Finish' : 'Edit';
     renderTagsList();
   });
 
-  tagsNewBtn.addEventListener('click', (ev) => {
+  tagsNewBtn.addEventListener('mousedown', (ev) => {
     ev.stopPropagation();
     // inline quick add at top of list
     const form = document.createElement('div');
@@ -1099,7 +1157,8 @@ function ensureTagsClosedOnModeChange() {
     nameInput.focus();
 
     save.addEventListener('click', async (e) => {
-      const nm = stripHTMLTags(nameInput.value.trim());
+      // const nm = stripHTMLTags(nameInput.value.trim());
+      const nm = nameInput.value
       const color = colorInput.value || '#8fb7ff';
       if (!nm) { showToast('Name required'); return; }
       if (tagNameExists(nm)) { showToast('Tag name already exists'); return; }
@@ -1267,9 +1326,12 @@ function ensureTagsClosedOnModeChange() {
     isAddingOrEditing = true;
     ensureTagsClosedOnModeChange();
 
-    inputTitle.value = stripHTMLTags(prefillTitle);
-    inputQuick.value = stripHTMLTags(prefillQuick);
-    inputBody.value = stripHTMLTags(prefillBody);
+    inputTitle.value = prefillTitle;
+    inputQuick.value = prefillQuick;
+    inputBody.value = prefillBody;
+    // inputTitle.value = stripHTMLTags(prefillTitle);
+    // inputQuick.value = stripHTMLTags(prefillQuick);
+    // inputBody.value = stripHTMLTags(prefillBody);
 
     addArea.classList.add('open');
     addArea.setAttribute('aria-hidden', 'false');
@@ -1378,9 +1440,12 @@ function ensureTagsClosedOnModeChange() {
   });
 
   saveBtn.addEventListener('click', async () => {
-    const title = stripHTMLTags(inputTitle.value.trim());
-    const quick = stripHTMLTags(inputQuick.value.trim());
-    const text = stripHTMLTags(inputBody.value.trim());
+    const title =inputTitle.value.trim();
+    const quick =inputQuick.value.trim();
+    const text = inputBody.value.trim();
+    // const title = stripHTMLTags(inputTitle.value.trim());
+    // const quick = stripHTMLTags(inputQuick.value.trim());
+    // const text = stripHTMLTags(inputBody.value.trim());
     if (!title || !text) { alert('Both title and prompt are required'); return; }
     if (editingId != null) {
       const idx = prompts.findIndex(x => x.id === editingId);
@@ -1422,24 +1487,6 @@ function ensureTagsClosedOnModeChange() {
     try { await setStorage({ [SETTINGS_KEY]: settings }); hideSettingsArea(); showToast('Settings saved'); } catch { showToast('Save failed'); }
   });
 
-  // clicking outside: close add/settings and tags dropdown
-  document.addEventListener('mousedown', (ev) => {
-    if (!panel.classList.contains('open')) return;
-
-    const path = (ev as any).composedPath ? (ev as any).composedPath() : (ev as any).path || [ev.target];
-
-    // if the click touched the panel or host (or their descendants / shadow hosts), treat as inside
-    if (pathTouches(path, [panel, host])) return;
-
-    // fallback: use bounding rect with a small tolerance (keeps previous behavior)
-    const rect = panel.getBoundingClientRect();
-    if (isPointInsideExtendedRect((ev as MouseEvent).clientX, (ev as MouseEvent).clientY, rect, CLOSE_TOLERANCE_PX)) return;
-
-    hideAddArea();
-    hideSettingsArea();
-    closeTagsDropdown();
-    panel.classList.remove('open');
-  });
 
 
   function isPointInsideExtendedRect(x: number, y: number, rect: DOMRect, tol: number) {

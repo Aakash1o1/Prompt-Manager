@@ -3,6 +3,13 @@
 // Keeps markup and styles in one place.
 
 export function createOrGetHost() {
+  // at top of src/content/ui.ts (or in createOrGetHost)
+  if ((window as any).__promptManagerInitialized) {
+    // Optionally update or rebind the shadow UI but DO NOT add global listeners twice.
+    return;
+  }
+  (window as any).__promptManagerInitialized = true;
+
   const HOST_ID = 'prompt-drawer-host-shadow';
   let host = document.getElementById(HOST_ID) as HTMLElement | null;
   if (host && host.shadowRoot) return { host, shadow: host.shadowRoot as ShadowRoot };
@@ -195,6 +202,23 @@ export function createOrGetHost() {
         padding-right: 6px;
         margin-top: 4px;
       }
+      /* ADD THESE LINES TO STYLE THE TAGS SCROLLBAR */
+      .tags-list::-webkit-scrollbar {
+        width: 6px; /* Width of the scrollbar */
+      }
+      .tags-list::-webkit-scrollbar-track {
+        background: transparent; /* Makes the track invisible */
+      }
+      .tags-list::-webkit-scrollbar-thumb {
+        background-color: rgba(255, 255, 255, 0.15); /* A semi-transparent white/grey */
+        border-radius: 10px; /* Rounded corners for the thumb */
+        border: 2px solid transparent; /* Creates padding around thumb */
+        background-clip: content-box;
+      }
+      .tags-list::-webkit-scrollbar-thumb:hover {
+        background-color: rgba(255, 255, 255, 0.3); /* Slightly more visible on hover */
+      }
+
       .tag-row {
         display:flex;
         gap:8px;
@@ -203,7 +227,7 @@ export function createOrGetHost() {
         border-radius:8px;
         cursor: pointer;
       }
-      .tag-row:hover { background: rgba(255,255,255,0.02); }
+      .tag-row:hover { background: rgba(244, 3, 3, 0.02); }
       .tag-swatch {
         width:18px; height:18px; border-radius:4px; border: 1px solid rgba(0,0,0,0.08); flex: 0 0 auto;
       }
@@ -230,15 +254,17 @@ export function createOrGetHost() {
       /* Delete icon placed at the top-right of the add-area (edit page).
          It's only created dynamically when editing an existing prompt. */
       .delete-btn {
+        color: #FFD400; /* yellow icon */
+
         position: absolute;
-        top: 0px;
+        top: 14px;
         right: 8px;
         width: 36px;
         height: 3px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        border-radius: 8px;
+        border-radius: 2px;
         border: none;
         background: transparent;
         color: var(--txt);
@@ -246,13 +272,22 @@ export function createOrGetHost() {
         z-index: 10;
         transition: box-shadow 140ms ease, background 120ms ease, color 120ms ease;
       }
-      .delete-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+      .delete-btn svg { 
+        color: #FFD400;
+        width: 16px; 
+        height: 16px; 
+        stroke: #FFD400; 
+        fill: none; 
+        stroke-width: 1.6; 
+        background: rgba(255, 212, 64, 0.06);
+        box-shadow: 0 0 0 6px rgba(255, 212, 64, 0.10), 0 6px 20px rgba(255, 200, 64, 0.12);
+        border-radius:2px;
+
+      }
 
       /* Hover glow (yellow) */
       .delete-btn:hover {
-        color: #FFD400; /* yellow icon */
-        background: rgba(255, 212, 64, 0.06);
-        box-shadow: 0 0 0 6px rgba(255, 212, 64, 0.10), 0 6px 20px rgba(255, 200, 64, 0.12);
+        transform: translateY(-1px);
       }
 
       input[type="text"], textarea { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.03); background: rgba(0,0,0,0.04); color: var(--txt); font-size: var(--font-size); }
@@ -296,15 +331,29 @@ export function createOrGetHost() {
         margin-top: 6px;
         -webkit-overflow-scrolling: touch;
       }
+      /* ADD THESE LINES TO STYLE THE SCROLLBAR */
+      .list::-webkit-scrollbar {
+        width: 6px; /* Width of the scrollbar */
+      }
+      .list::-webkit-scrollbar-track {
+        background: transparent; /* Makes the track invisible */
+      }
+      .list::-webkit-scrollbar-thumb {
+        background-color: rgba(255, 255, 255, 0.15); /* A semi-transparent white/grey */
+        border-radius: 10px; /* Rounded corners for the thumb */
+        border: 2px solid transparent; /* Creates padding around thumb */
+        background-clip: content-box;
+      }
+      .list::-webkit-scrollbar-thumb:hover {
+        background-color: rgba(255, 255, 255, 0.3); /* Slightly more visible on hover */
+      }
       .row {
         display: flex; /* <-- THIS IS THE KEY RULE FOR HORIZONTAL LAYOUT */
         align-items: center;
         justify-content: space-between;
         gap: 8px;
-        padding: 4px;           
         border-radius: 10px;
         background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(0,0,0,0.03));
-        margin-bottom: 8px;
         min-height: 36px;
         transition: background 120ms ease, transform 160ms ease, opacity 120ms ease;
         cursor: default; 
@@ -330,7 +379,7 @@ export function createOrGetHost() {
       }
       .label {
         flex: 1;
-        font-weight: 600;
+        font-weight: 100;
         font-size: calc(var(--font-size) * 1);
         color: var(--txt);
         white-space: nowrap;
@@ -380,6 +429,37 @@ export function createOrGetHost() {
       border-radius: 8px;
     }
 
+
+.row:hover{
+  background-color: #000000; /* Same background color as hover for consistency. */
+  outline: none; /* Removes the default browser focus ring. */
+
+      transform: translateY(-1px);
+    cursor: pointer;
+}
+
+    
+.row:focus, .row.selected {
+  background-color: #000000; /* Same background color as hover for consistency. */
+  outline: none; /* Removes the default browser focus ring. */
+
+      transform: translateY(-1px);
+    cursor: pointer;
+}
+
+/* This rule makes the text inside the row BOLD only on focus/selection.
+   Your full CSS shows the text is within a ".label" element, so we target that. */
+.row:focus .label,
+.row.selected .label {
+  font-weight: bold; /* or 700 */
+}
+
+
+
+
+
+      transform: translateY(-1px);
+    cursor: pointer;
 
 
     </style>

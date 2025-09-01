@@ -3,7 +3,7 @@
 
 export function getRectsMap(shadow: ShadowRoot) {
   const map = new Map<string, DOMRect>();
-  shadow.querySelectorAll<HTMLElement>('.row').forEach((el) => {
+  shadow.querySelectorAll<HTMLElement>('.row, .tag-row').forEach((el) => {
     const id = el.dataset.id;
     if (id) map.set(id, el.getBoundingClientRect());
   });
@@ -14,7 +14,7 @@ export function playFLIP(shadow: ShadowRoot, before: Map<string, DOMRect>) {
   const after = getRectsMap(shadow);
   after.forEach((newRect, id) => {
     const oldRect = before.get(id);
-    const el = shadow.querySelector<HTMLElement>(`.row[data-id="${id}"]`);
+    const el = shadow.querySelector<HTMLElement>(`.row[data-id="${id}"], .tag-row[data-id="${id}"]`);
     if (!oldRect || !el) return;
     const dy = oldRect.top - newRect.top;
     if (dy === 0) return;
