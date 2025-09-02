@@ -129,11 +129,44 @@ async function renderAllowedSites() {
     btn.textContent = 'Remove';
     btn.className = 'remove-btn';
     btn.addEventListener('click', async () => {
-      await new Promise<void>((res) => {
-        chrome.permissions.remove({ origins: [pattern] }, () => res());
+      // give user immediate feedback
+      setStatus(`Removing permission for ${pattern}...`);
+
+      // call chrome.permissions.remove and capture result + lastError
+      const removed = await new Promise<boolean>((res) => {
+        chrome.permissions.remove({ origins: [pattern] }, (wasRemoved) => {
+          // If chrome set lastError, consider removal failed
+          if (chrome.runtime.lastError) {
+            console.error('permissions.remove failed:', chrome.runtime.lastError);
+            res(false);
+            return;
+          }
+          // wasRemoved is typically a boolean indicating success
+          res(Boolean(wasRemoved));
+        });
       });
+
+      if (!removed) {
+        // do NOT change storage if removal failed — show helpful error
+        setStatus(`Failed to remove permission for ${pattern}.`);
+        // you may also show more detail in the console (already logged)
+        return;
+      }
+
+      // Only now update storage to remove the pattern
       const next = (await getHosts()).filter(p => p !== pattern);
-      await setHosts(next);
+      try {
+        await setHosts(next);
+      } catch (e) {
+        console.error('setHosts failed after removal', e);
+        setStatus(`Permission removed for ${pattern}, but failed to update local storage.`);
+        // still re-render permission UI from chrome.permissions state
+        await renderAllowedSites();
+        await renderPopularSites();
+        return;
+      }
+      
+      
       setStatus(`Removed permission for ${pattern}`);
       await renderAllowedSites();
       await renderPopularSites();
@@ -144,9 +177,6 @@ async function renderAllowedSites() {
   }
 }
 
-function confirmPermissionUi(pattern: string): boolean {
-  return confirm(`Grant Prompt Drawer permission to access pages on:\n\n${pattern}`);
-}
 
 document.addEventListener('DOMContentLoaded', async () => {
   const hostInput = document.getElementById(HOST_INPUT) as HTMLInputElement;
@@ -187,22 +217,45 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     let grantedCount = 0;
-    for (const pattern of originsToRequest) {
-      if (!confirmPermissionUi(pattern)) {
-        setStatus('Permission cancelled by user.');
-        continue;
+    // single combined request for all origins
+    setStatus(`Requesting permission for ${originsToRequest.length} site(s)...`);
+
+    // make one request call for all origins at once
+    const grantedAll = await new Promise<boolean>((res) => {
+      try {
+        chrome.permissions.request({ origins: originsToRequest }, (granted) => {
+          if (chrome.runtime.lastError) {
+            console.error('permissions.request failed:', chrome.runtime.lastError);
+            res(false);
+            return;
+          }
+          res(Boolean(granted));
+        });
+      } catch (e) {
+        console.error('permissions.request threw', e);
+        res(false);
       }
-      setStatus(`Requesting permission for ${pattern}...`);
-      const granted = await requestPermissionForPattern(pattern);
-      if (!granted) {
-        setStatus(`Permission not granted for ${pattern}.`);
-        continue;
-      }
-      grantedCount++;
+    });
+
+    if (!grantedAll) {
+      // If the user denied the combined request, show a single error and do not update storage
+      setStatus('Permission not granted for the requested sites.');
+    } else {
+      // update storage once with all newly-granted origins
       const cur = await getHosts();
-      await setHosts(Array.from(new Set([...cur, pattern])));
-      chrome.runtime.sendMessage({ type: 'PERMISSION_GRANTED', pattern }, () => {});
+      const next = Array.from(new Set([...cur, ...originsToRequest]));
+      await setHosts(next);
+
+      // notify background/other parts for each granted pattern if you need per-pattern messages
+      for (const pattern of originsToRequest) {
+        chrome.runtime.sendMessage({ type: 'PERMISSION_GRANTED', pattern }, () => {});
+      }
+
+      setStatus(`Permission granted for ${originsToRequest.length} site(s). Reload tabs to activate.`);
+      await renderPopularSites();
+      await renderAllowedSites();
     }
+
 
     if (grantedCount > 0) {
       setStatus(`Permission granted for ${grantedCount} site(s). Reload tabs to activate.`);
