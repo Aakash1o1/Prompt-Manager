@@ -6,6 +6,7 @@
 type Settings = {
   popupHeightVh: number;
   popupWidthPx: number;
+  fontSizePx: number; // +++ ADD THIS LINE
   theme: 'light' | 'dark';
   hotspotPosition: 'corner' | 'edge';
   hotspotWidthPx: number;

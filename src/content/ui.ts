@@ -11,6 +11,7 @@ type Tag = { id: string; name: string; color: string; order: number };
 type Settings = {
   popupHeightVh: number;
   popupWidthPx: number;
+  fontSizePx: number; // +++ ADD THIS LINE
   theme: 'light' | 'dark';
   hotspotPosition: 'corner' | 'edge';
   hotspotWidthPx: number;
@@ -408,14 +409,15 @@ document.addEventListener('mousedown', (ev) => {
 
 
   function applySettingsToHost() {
-    host.style.setProperty('--popup-width', `${settings.popupWidthPx}px`);
-    host.style.setProperty('--popup-height', `${settings.popupHeightVh}vh`);
+    host.style.setProperty('--popup-width', `${settings.popupWidthPx || 320}px`);
+    host.style.setProperty('--popup-height', settings.popupHeightVh ? `${settings.popupHeightVh}vh` : '365px');
+    host.style.setProperty('--font-size', `${settings.fontSizePx || 13}px`);
 
     host.style.setProperty('--hotspot-width', `${settings.hotspotWidthPx}px`);
-    host.setAttribute('data-hotspot-position', settings.hotspotPosition);
-    host.setAttribute('data-theme', settings.theme);
-    if (!host.style.getPropertyValue('--font-size')) host.style.setProperty('--font-size', '13px');
-    try { (shadow.getElementById('panel') as HTMLElement).style.fontSize = host.style.getPropertyValue('--font-size') || '13px'; } catch {}
+    host.setAttribute('data-hotspot-position', settings.hotspotPosition || 'edge');
+    host.setAttribute('data-theme', settings.theme || 'dark');
+    if (!host.style.getPropertyValue('--font-size')) host.style.setProperty('--font-size', '10px');
+    try { (shadow.getElementById('panel') as HTMLElement).style.fontSize = host.style.getPropertyValue('--font-size') || '10px'; } catch {}
   }
 
   function getTagsDropdownContext(): 'list' | 'edit' {
@@ -1407,12 +1409,15 @@ function ensureTagsClosedOnModeChange() {
   }
 
   function showSettingsArea() {
-    settingsArea.classList.add('open'); settingsArea.setAttribute('aria-hidden', 'false');
+    settingsArea.classList.add('open'); 
+    settingsArea.setAttribute('aria-hidden', 'false');
     sFontSize.value = String(parseInt(window.getComputedStyle(host).getPropertyValue('--font-size') || '13') || 13);
     sTheme.value = settings.theme;
     sHotpos.value = settings.hotspotPosition;
-    list.style.display = 'none'; addArea.classList.remove('open');
-    panel.classList.add('mode-settings'); panel.classList.remove('mode-add');
+    list.style.display = 'none'; 
+    addArea.classList.remove('open');
+    panel.classList.add('mode-settings'); 
+    panel.classList.remove('mode-add');
     ensureTagsClosedOnModeChange();
 
   }
@@ -1472,17 +1477,17 @@ function ensureTagsClosedOnModeChange() {
   settingsBtn.addEventListener('click', () => { if (settingsArea.classList.contains('open')) hideSettingsArea(); else showSettingsArea(); });
   sCancel.addEventListener('click', () => hideSettingsArea());
   sSave.addEventListener('click', async () => {
+    const fs = parseInt(sFontSize.value, 10); // Get the font size as a number
+
     const newS: Settings = {
       popupHeightVh: settings.popupHeightVh,
       popupWidthPx: settings.popupWidthPx,
+      fontSizePx: (fs && !Number.isNaN(fs)) ? fs : 13, // Use new value or default to 13
       theme: (sTheme.value as 'light' | 'dark') || settings.theme,
       hotspotPosition: (sHotpos.value as 'corner' | 'edge') || settings.hotspotPosition,
       hotspotWidthPx: settings.hotspotWidthPx
     };
-    const fs = Number(sFontSize.value);
-    if (fs && !Number.isNaN(fs)) {
-      host.style.setProperty('--font-size', `${fs}px`);
-    }
+
     settings = newS; applySettingsToHost();
     try { await setStorage({ [SETTINGS_KEY]: settings }); hideSettingsArea(); showToast('Settings saved'); } catch { showToast('Save failed'); }
   });
@@ -1515,16 +1520,43 @@ function ensureTagsClosedOnModeChange() {
   });
 
   // toggle via message
-  chrome.runtime.onMessage.addListener((msg: any) => {
-      if (!panel.classList.contains('open')) {
-        attachPanelBackdrop();
-        showPanel();
-        setTimeout(() => searchInput?.focus(), 60);
-      } else {
-        hidePanel();
-      }
+// existing message handler — extended to handle PERMISSION_REMOVED
+chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
+  // Permission removed -> teardown UI if the pattern matches this page
+  if (msg?.type === 'PERMISSION_REMOVED' && msg?.pattern) {
+    try {
+      const originPrefix = String(msg.pattern).replace(/\*.*$/, '');
+      if (window.location.href.startsWith(originPrefix)) {
+        // Remove shadow host
+        try {
+          const HOST_ID = 'prompt-drawer-host-shadow';
+          const hostEl = document.getElementById(HOST_ID);
+          if (hostEl) hostEl.remove();
+        } catch (e) { /* ignore */ }
 
-  });
+        // Remove backdrop if we created it (panelBackdrop defined in this module)
+        try { if (panelBackdrop && panelBackdrop.parentElement) panelBackdrop.remove(); } catch (e) { /* ignore */ }
+
+        // Clear initialization flag, so future permission grants can re-create UI
+        try { (window as any).__promptManagerInitialized = false; } catch (e) { /* ignore */ }
+      }
+    } catch (e) { /* ignore */ }
+    // nothing to respond
+    return;
+  }
+
+  // Existing behavior: toggle popup on message
+  if (msg?.type === 'TOGGLE_POPUP') {
+    if (!panel.classList.contains('open')) {
+      attachPanelBackdrop();
+      showPanel();
+      setTimeout(() => searchInput?.focus(), 60);
+    } else {
+      hidePanel();
+    }
+  }
+});
+
 
   // resize handles
   setupResizeHandles({ panel, shadow, host, getSettings: () => settings, saveSettings: async (s: Settings) => { settings = s; applySettingsToHost(); await setStorage({ [SETTINGS_KEY]: settings }); } });

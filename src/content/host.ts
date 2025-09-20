@@ -33,7 +33,7 @@ export function createOrGetHost() {
         --popup-width: 280px;
         --popup-height: 56vh;
         --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        --font-size: 13px;
+        --font-size: 10px;
         --bg-dark: rgba(12,18,24,0.55);
         --bg-dark-b: rgba(24,32,40,0.55);
         --txt: #e6eef8;
@@ -97,7 +97,7 @@ export function createOrGetHost() {
         top: calc(50% - (var(--popup-height) / 2));
         border-radius: 4px; /* <<< --- FIX: Added 'px' unit here */
         writing-mode: vertical-rl;
-        font-size: 13px;
+        font-size: 10px;
         color: transparent; /* hide inner emoji/text */
         background: linear-gradient(86deg, rgb(0 12 255 / 0%) 0%, rgb(41 169 255 / 88%) 40%, rgb(255 255 255 / 0%) 100%);
         backdrop-filter: blur(6px) saturate(120%); /* mist/blur */

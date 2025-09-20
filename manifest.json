@@ -7,7 +7,6 @@
     "storage",
     "scripting",
     "activeTab",
-    "tabs",
     "commands"
   ],
   "optional_host_permissions": [

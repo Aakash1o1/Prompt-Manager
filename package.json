@@ -18,7 +18,5 @@
     "build:all": "npm run build:content && npm run build:background && npm run build:options && npm run build:action",
     "build": "npm run clean && npm run build:all"
   },
-  "dependencies": {
-    "dompurify": "^3.2.6"
-  }
+  "dependencies": {}
 }

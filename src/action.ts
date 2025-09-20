@@ -129,48 +129,33 @@ async function renderAllowedSites() {
     btn.textContent = 'Remove';
     btn.className = 'remove-btn';
     btn.addEventListener('click', async () => {
-      // give user immediate feedback
+      // Give user immediate feedback
       setStatus(`Removing permission for ${pattern}...`);
 
-      // call chrome.permissions.remove and capture result + lastError
-      const removed = await new Promise<boolean>((res) => {
-        chrome.permissions.remove({ origins: [pattern] }, (wasRemoved) => {
-          // If chrome set lastError, consider removal failed
-          if (chrome.runtime.lastError) {
-            console.error('permissions.remove failed:', chrome.runtime.lastError);
-            res(false);
-            return;
-          }
-          // wasRemoved is typically a boolean indicating success
-          res(Boolean(wasRemoved));
-        });
+      // 1. ONLY call chrome.permissions.remove. 
+      //    The background script's onRemoved listener will handle everything else.
+      chrome.permissions.remove({ origins: [pattern] }, (removed) => {
+        if (chrome.runtime.lastError) {
+          // If there was an error, report it
+          console.error('permissions.remove failed:', chrome.runtime.lastError.message);
+          setStatus(`Failed to remove: ${chrome.runtime.lastError.message}`);
+          return;
+        }
+
+        if (removed) {
+          // Success! The background listener will now do the real work.
+          // We just update the UI here.
+          setStatus(`Permission for ${pattern} has been revoked.`);
+          // Re-render the UI lists to reflect the change.
+          renderAllowedSites();
+          renderPopularSites();
+        } else {
+          // This can happen if the user denies a confirmation dialog, for example.
+          setStatus(`Permission removal was not completed for ${pattern}.`);
+        }
       });
-
-      if (!removed) {
-        // do NOT change storage if removal failed — show helpful error
-        setStatus(`Failed to remove permission for ${pattern}.`);
-        // you may also show more detail in the console (already logged)
-        return;
-      }
-
-      // Only now update storage to remove the pattern
-      const next = (await getHosts()).filter(p => p !== pattern);
-      try {
-        await setHosts(next);
-      } catch (e) {
-        console.error('setHosts failed after removal', e);
-        setStatus(`Permission removed for ${pattern}, but failed to update local storage.`);
-        // still re-render permission UI from chrome.permissions state
-        await renderAllowedSites();
-        await renderPopularSites();
-        return;
-      }
-      
-      
-      setStatus(`Removed permission for ${pattern}`);
-      await renderAllowedSites();
-      await renderPopularSites();
     });
+
     row.appendChild(span);
     row.appendChild(btn);
     container.appendChild(row);

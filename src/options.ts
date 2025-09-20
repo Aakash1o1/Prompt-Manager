@@ -36,23 +36,29 @@ async function rebuildList() {
     btn.style.background = '#e02424';
     btn.style.color = '#fff';
     btn.addEventListener('click', async () => {
+      // ONLY call chrome.permissions.remove. 
+      // The background script's onRemoved listener will handle everything else.
       chrome.permissions.remove({ origins: [h] }, (removed) => {
+        if (chrome.runtime.lastError) {
+          console.error(`permissions.remove failed for ${h}:`, chrome.runtime.lastError.message);
+          // Optional: show an alert or status message to the user
+          alert(`Failed to remove permission: ${chrome.runtime.lastError.message}`);
+          return;
+        }
+        
         if (removed) {
-          getHosts().then((cur) => {
-            const next = cur.filter((x) => x !== h);
-            setHosts(next).then(() => {
-              rebuildList();
-            });
-          });
+          // The permission was successfully removed.
+          // The onRemoved listener in background.js will handle storage cleanup.
+          // We just need to rebuild the list in this options page UI.
+          console.log(`Permission for ${h} removed. Rebuilding list.`);
+          rebuildList();
         } else {
-          // fallback: update storage anyway
-          getHosts().then((cur) => {
-            const next = cur.filter((x) => x !== h);
-            setHosts(next).then(rebuildList);
-          });
+          // The removal was not successful (e.g., user canceled a prompt).
+          console.log(`Permission removal for ${h} was not completed.`);
         }
       });
     });
+
     li.appendChild(span);
     li.appendChild(btn);
     listEl.appendChild(li);

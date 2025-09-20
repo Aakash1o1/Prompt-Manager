@@ -10,6 +10,7 @@ type Settings = {
   popupHeightVh: number;
   popupWidthPx: number;
   fontFamily: string;
+  fontSizePx: number; // +++ ADD THIS LINE
   theme: 'light' | 'dark';
   hotspotPosition: 'corner' | 'edge';
   hotspotWidthPx: number;
@@ -23,6 +24,7 @@ const DEFAULT_SETTINGS: Settings = {
   popupHeightVh: 56,
   popupWidthPx: 280,
   fontFamily: 'Arial, Helvetica, sans-serif',
+  fontSizePx: 13, // +++ ADD THIS LINE (13px is a more readable default)
   theme: 'dark',
   hotspotPosition: 'corner',
   hotspotWidthPx: 24
