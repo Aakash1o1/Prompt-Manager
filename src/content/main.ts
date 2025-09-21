@@ -22,11 +22,11 @@ const TAGS_KEY = 'promptManager.tags';
 
 const DEFAULT_SETTINGS: Settings = {
   popupHeightVh: 56,
-  popupWidthPx: 280,
+  popupWidthPx: 340,
   fontFamily: 'Arial, Helvetica, sans-serif',
   fontSizePx: 13, // +++ ADD THIS LINE (13px is a more readable default)
   theme: 'dark',
-  hotspotPosition: 'corner',
+  hotspotPosition: 'edge',
   hotspotWidthPx: 24
 };
 

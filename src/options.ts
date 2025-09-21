@@ -5,13 +5,13 @@ export {};
 const INPUT_ID = 'new-host';
 const REQ_BTN = 'request-btn';
 const LIST_ID = 'hosts-list';
-const STORAGE_KEY = 'promptManager.allowedHosts';
 
-async function getHosts(): Promise<string[]> {
-  return new Promise((res) => chrome.storage.local.get([STORAGE_KEY], (r) => res(r[STORAGE_KEY] ?? [])));
-}
-async function setHosts(hosts: string[]) {
-  return new Promise<void>((res) => chrome.storage.local.set({ [STORAGE_KEY]: hosts }, () => res()));
+async function getAllowedOrigins(): Promise<string[]> {
+  return new Promise((resolve) => {
+    chrome.permissions.getAll((permissions) => {
+      resolve(permissions.origins || []);
+    });
+  });
 }
 
 function normalizePattern(s: string) {
@@ -21,7 +21,7 @@ function normalizePattern(s: string) {
 async function rebuildList() {
   const listEl = document.getElementById(LIST_ID)! as HTMLElement;
   listEl.innerHTML = '';
-  const hosts = await getHosts();
+  const hosts = await getAllowedOrigins();
   if (!hosts.length) {
     listEl.innerHTML = '<li class="small">No sites enabled yet.</li>';
     return;
@@ -72,11 +72,6 @@ async function onRequestClick() {
   try {
     chrome.permissions.request({ origins: [val] }, async (granted) => {
       if (granted) {
-        const hosts = await getHosts();
-        if (!hosts.includes(val)) {
-          hosts.push(val);
-          await setHosts(hosts);
-        }
         // inform background to inject on open tabs
         chrome.runtime.sendMessage({ type: 'PERMISSION_GRANTED', pattern: val }, () => {});
         input.value = '';

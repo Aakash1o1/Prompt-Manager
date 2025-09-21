@@ -8,7 +8,6 @@ export {};
 const HOST_INPUT = 'host';
 const BTN = 'enable';
 const STATUS = 'status';
-const STORAGE_KEY = 'promptManager.allowedHosts';
 
 type SiteDef = { id: string; title: string; pattern: string };
 
@@ -23,13 +22,14 @@ const POPULAR_SITES: SiteDef[] = [
   { id: 'grok', title: 'Grok', pattern: 'https://grok.com/*' }
 ];
 
-// small wrappers for chrome.storage
-async function getHosts(): Promise<string[]> {
-  return new Promise((res) => chrome.storage.local.get([STORAGE_KEY], (r) => res(r[STORAGE_KEY] ?? [])));
+async function getAllowedOrigins(): Promise<string[]> {
+  return new Promise((resolve) => {
+    chrome.permissions.getAll((permissions) => {
+      resolve(permissions.origins || []);
+    });
+  });
 }
-async function setHosts(hs: string[]) {
-  return new Promise<void>((res) => chrome.storage.local.set({ [STORAGE_KEY]: hs }, () => res()));
-}
+
 
 // UI helper
 function setStatus(msg: string) {
@@ -87,14 +87,12 @@ async function renderPopularSites() {
   listEl.innerHTML = '';
   listEl.style.display = 'grid'; // Ensure it's a grid
 
-  const checks = await Promise.all(POPULAR_SITES.map(s => new Promise<{ s: SiteDef; allowed: boolean }>(res => {
-    chrome.permissions.contains({ origins: [s.pattern] }, (has) => res({ s, allowed: Boolean(has) }));
-  })));
-  const persisted = await getHosts();
+  const allAllowed = await getAllowedOrigins();
 
-  for (const entry of checks) {
+
+  for (const entry of POPULAR_SITES.map(s => ({ s, allowed: allAllowed.includes(s.pattern) }))) {
     const s = entry.s;
-    const alreadyAllowed = entry.allowed || persisted.includes(s.pattern);
+    const alreadyAllowed = allAllowed.includes(s.pattern);
     const siteButton = document.createElement('div');
     siteButton.className = 'site-button';
     if (alreadyAllowed) siteButton.classList.add('site-enabled');
@@ -114,7 +112,7 @@ async function renderAllowedSites() {
   const container = document.getElementById('allowed-sites-list')!;
   container.innerHTML = '';
 
-  const hosts = await getHosts();
+  const hosts = await getAllowedOrigins();
   if (hosts.length === 0) {
     container.innerHTML = '<div class="small" style="padding: 4px;">No sites have been enabled yet.</div>';
     return;
@@ -225,28 +223,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!grantedAll) {
       // If the user denied the combined request, show a single error and do not update storage
       setStatus('Permission not granted for the requested sites.');
-    } else {
-      // update storage once with all newly-granted origins
-      const cur = await getHosts();
-      const next = Array.from(new Set([...cur, ...originsToRequest]));
-      await setHosts(next);
-
-      // notify background/other parts for each granted pattern if you need per-pattern messages
-      for (const pattern of originsToRequest) {
-        chrome.runtime.sendMessage({ type: 'PERMISSION_GRANTED', pattern }, () => {});
-      }
-
-      setStatus(`Permission granted for ${originsToRequest.length} site(s). Reload tabs to activate.`);
-      await renderPopularSites();
-      await renderAllowedSites();
-    }
+    } else {}
 
 
-    if (grantedCount > 0) {
-      setStatus(`Permission granted for ${grantedCount} site(s). Reload tabs to activate.`);
-      await renderPopularSites();
-      await renderAllowedSites();
-    }
+
     hostInput.value = '';
     setTimeout(() => setStatus(''), 4000);
   });

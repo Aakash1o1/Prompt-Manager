@@ -429,23 +429,20 @@ export function createOrGetHost() {
       border-radius: 8px;
     }
 
+      :host([data-theme="light"]) {
+        --bg: var(--silver-bg);
+        --bg-b: rgba(240,242,245,0.64);
+        --txt: var(--silver-txt);
+        --row-hover-bg: rgba(0, 0, 0, 0.05); /* +++ ADD THIS: Subtle dark tint for light theme */
+      }
 
-.row:hover{
-  background-color: #000000; /* Same background color as hover for consistency. */
-  outline: none; /* Removes the default browser focus ring. */
-
-      transform: translateY(-1px);
-    cursor: pointer;
-}
-
-    
-.row:focus, .row.selected {
-  background-color: #000000; /* Same background color as hover for consistency. */
-  outline: none; /* Removes the default browser focus ring. */
-
-      transform: translateY(-1px);
-    cursor: pointer;
-}
+      /* Dark theme fallback */
+      :host(:not([data-theme="light"])) {
+        --bg: linear-gradient(180deg, rgba(12,18,24,0.6), rgba(18,24,32,0.6));
+        --bg-b: var(--bg-dark-b);
+        --txt: #e6eef8;
+        --row-hover-bg: rgba(255, 255, 255, 0.06); /* +++ ADD THIS: Subtle white glow for dark theme */
+      }
 
 /* This rule makes the text inside the row BOLD only on focus/selection.
    Your full CSS shows the text is within a ".label" element, so we target that. */
@@ -453,6 +450,22 @@ export function createOrGetHost() {
 .row.selected .label {
   font-weight: bold; /* or 700 */
 }
+      .row:hover,
+    .row:focus,
+    .row.selected {
+      background-color: var(--row-hover-bg); /* Use the theme-aware variable */
+      outline: none; /* Removes the default browser focus ring. */
+      transform: translateY(-1px);
+      cursor: pointer;
+    }
+
+    /* This rule makes the text inside the row BOLD only on focus/selection.
+       Your full CSS shows the text is within a ".label" element, so we target that. */
+    .row:focus .label,
+    .row.selected .label {
+      font-weight: bold; /* or 700 */
+    }
+
 
 
 

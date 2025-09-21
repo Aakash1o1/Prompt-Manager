@@ -1,36 +1,8 @@
 // file: /home/auriga/Desktop/Projects/prompt manager/src/background.ts
 // Background service worker: handles permission grants and injects content script into open tabs for allowed patterns.
 
-type HostPattern = string;
-
-const PROMPTS_HOSTS_KEY = 'promptManager.allowedHosts';
 
 
-async function logCurrentPermissionsState(moment: string) {
-  // 1. Get the list from YOUR extension's storage
-  const hostsFromStorage = await getAllowedHosts();
-
-  // 2. Get the list directly from CHROME's permission API
-  const permissionsFromChrome = await new Promise<string[]>((resolve) => {
-    chrome.permissions.getAll((permissions) => {
-      resolve(permissions.origins || []);
-    });
-  });
-
-  // 3. Print them both out with clear labels
-  console.log(`\n--- PERMISSION STATE CHECK @ ${moment} ---`);
-  console.log("[STORAGE] Your extension thinks it has permission for:", hostsFromStorage);
-  console.log("[CHROME API] The browser says you have permission for:", permissionsFromChrome);
-  console.log("-------------------------------------------\n");
-}
-
-// Helper: read allowed hosts from storage
-function getAllowedHosts(): Promise<HostPattern[]> {
-  return new Promise((res) => chrome.storage.local.get([PROMPTS_HOSTS_KEY], (r) => res(r[PROMPTS_HOSTS_KEY] ?? [])));
-}
-function setAllowedHosts(hosts: HostPattern[]): Promise<void> {
-  return new Promise((res) => chrome.storage.local.set({ [PROMPTS_HOSTS_KEY]: hosts }, () => res()));
-}
 
 // Inject content script into a single tab (if not already present)
 async function injectIntoTab(tabId: number) {
@@ -45,7 +17,7 @@ async function injectIntoTab(tabId: number) {
 }
 
 // Inject into all open tabs matching originPrefix
-async function injectIntoOpenTabsForPattern(pattern: HostPattern) {
+async function injectIntoOpenTabsForPattern(pattern: string) {
   // We no longer rely on reading tab.url (requires "tabs" permission).
   // Instead, iterate open tab ids and attempt injection — injection will
   // succeed only on pages where we have host permission for `pattern`.
@@ -63,13 +35,9 @@ async function injectIntoOpenTabsForPattern(pattern: HostPattern) {
 
 
 // Called when the user grants permission for pattern (from options/page)
-async function onPermissionGrantedForPattern(pattern: HostPattern) {
+async function onPermissionGrantedForPattern(pattern: string) {
   // persist to allowedHosts list
-  const hosts = await getAllowedHosts();
-  if (!hosts.includes(pattern)) {
-    hosts.push(pattern);
-    await setAllowedHosts(hosts);
-  }
+
 
   // double-check permission exists (defensive)
   chrome.permissions.contains({ origins: [pattern] }, (has) => {
@@ -205,55 +173,37 @@ chrome.commands.onCommand.addListener(async (command) => {
 
 
 // When a tab updates, check if its URL matches any allowed host and inject if so.
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  // Prefer to use changeInfo.url when available (URL change event).
-  // Otherwise, when the tab status becomes 'complete' try injection once
-  // (will succeed only if we have host permission for that tab).
-  const hosts = await getAllowedHosts();
-  console.log("hosts --> ",hosts);
-  
-
-  // If changeInfo.url is present we can check it without needing "tabs"
-  if (changeInfo?.url) {
-    const url = String(changeInfo.url);
-    for (const p of hosts) {
-      const originPrefix = p.replace(/\*.*$/, '');
-      if (url.startsWith(originPrefix)) {
-        chrome.permissions.contains({ origins: [p] }, (has) => {
-          if (has) {
-            injectIntoTab(tabId).catch((e) => console.warn(e));
-          }
-        });
-        break;
-      }
-    }
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  // Only inject when a page is finished loading to avoid issues.
+  if (changeInfo.status !== 'complete' || !tab.url || !tab.url.startsWith('http')) {
     return;
   }
+  const tabUrl = tab.url;
 
-  // If no changeInfo.url, when the tab finished loading, do a safe attempt to inject.
-  if (changeInfo?.status === 'complete') {
-    for (const p of hosts) {
-      // confirm permission exists before attempting
-      chrome.permissions.contains({ origins: [p] }, (has) => {
-        if (has) {
-          // try injection — will fail harmlessly on non-matching pages
-          injectIntoTab(tabId).catch(() => {});
-        }
-      });
+  // Ask the browser if we have permission for this specific URL.
+  // This is the most reliable check.
+  chrome.permissions.contains({ origins: [tabUrl] }, (hasPermission) => {
+    if (hasPermission) {
+      injectIntoTab(tabId).catch(() => {}); // Fails silently if not possible
     }
-  }
+  });
 });
+
+
 
 
 // On install/startup, attempt to inject into open tabs for stored hosts if permission still present
-chrome.runtime.onInstalled.addListener(async () => {
-  const hosts = await getAllowedHosts();
-  for (const p of hosts) {
-    chrome.permissions.contains({ origins: [p] }, (has) => {
-      if (has) injectIntoOpenTabsForPattern(p).catch(console.error);
-    });
-  }
+chrome.runtime.onInstalled.addListener(() => {
+  // === REPLACE THE LOGIC WITH THIS SIMPLER VERSION ===
+  chrome.permissions.getAll(permissions => {
+    if (permissions.origins) {
+      for (const origin of permissions.origins) {
+        injectIntoOpenTabsForPattern(origin).catch(console.error);
+      }
+    }
+  });
 });
+
 
 // When permissions are added (anywhere), attempt to install content script for those origins
 chrome.permissions.onAdded.addListener((perms) => {
@@ -265,21 +215,10 @@ chrome.permissions.onAdded.addListener((perms) => {
 
 // --- handle permission removals: update storage + notify content scripts to teardown ---
 chrome.permissions.onRemoved.addListener(async (perms) => {
-  await logCurrentPermissionsState("onRemoved listener START");
 
   try {
     if (!perms || !perms.origins) return;
     for (const originPattern of perms.origins) {
-      // Remove from stored allowed-hosts (defensive)
-      try {
-        const hosts = await getAllowedHosts();
-        const next = hosts.filter(h => h !== originPattern);
-        if (next.length !== hosts.length) {
-          await setAllowedHosts(next);
-        }
-      } catch (e) {
-        console.error('Failed updating allowed hosts after removal', e);
-      }
 
       // Notify all tabs: content scripts that are injected will receive this and teardown.
       try {
