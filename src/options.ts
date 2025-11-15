@@ -2,8 +2,7 @@ export {};
 
 
 // src/options.ts
-const INPUT_ID = 'new-host';
-const REQ_BTN = 'request-btn';
+const ADD_BTN_ID = 'add-current-site-btn';
 const LIST_ID = 'hosts-list';
 
 async function getAllowedOrigins(): Promise<string[]> {
@@ -65,29 +64,30 @@ async function rebuildList() {
   }
 }
 
-async function onRequestClick() {
-  const input = document.getElementById(INPUT_ID) as HTMLInputElement;
-  const val = normalizePattern(input.value);
-  if (!val) return alert('Enter a host pattern like https://example.com/*');
-  try {
-    chrome.permissions.request({ origins: [val] }, async (granted) => {
+async function onAddCurrentSiteClick() {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs.length === 0) {
+      return alert('Could not determine current site. Navigate to a tab and try again.');
+    }
+    const url = tabs[0].url;
+    if (!url) {
+      return alert('Could not get URL of current site.');
+    }
+    const pattern = new URL(url).origin + '/*';
+
+    chrome.permissions.request({ origins: [pattern] }, async (granted) => {
       if (granted) {
-        // inform background to inject on open tabs
-        chrome.runtime.sendMessage({ type: 'PERMISSION_GRANTED', pattern: val }, () => {});
-        input.value = '';
+        chrome.runtime.sendMessage({ type: 'PERMISSION_GRANTED', pattern }, () => {});
         rebuildList();
-        alert('Permission granted and content injected into matching open tabs (if any).');
+        alert('Permission granted for ' + pattern);
       } else {
         alert('Permission not granted.');
       }
     });
-  } catch (e) {
-    console.error(e);
-    alert('Request failed. Check the pattern format (e.g. https://example.com/*)');
-  }
+  });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  (document.getElementById(REQ_BTN) as HTMLButtonElement).addEventListener('click', onRequestClick);
+  (document.getElementById(ADD_BTN_ID) as HTMLButtonElement).addEventListener('click', onAddCurrentSiteClick);
   rebuildList();
 });

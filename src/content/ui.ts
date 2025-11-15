@@ -828,8 +828,18 @@ function ensureTagsClosedOnModeChange() {
       // color swatch (clickable in edit mode)
       const sw = document.createElement('div'); sw.className = 'tag-swatch'; sw.style.width = '18px'; sw.style.height = '18px'; sw.style.borderRadius = '4px';
       sw.style.background = t.color || '#cccccc';
-      sw.title = 'Color';
-      sw.addEventListener('click', (ev) => ev.stopPropagation()); // clicks handled below
+      sw.title = editMode ? 'Click to change color' : 'Color';
+      
+      if (editMode) {
+        sw.addEventListener('mousedown', (ev) => {
+          ev.stopPropagation();
+          ev.preventDefault();
+          closeColorPalette();
+          openColorPaletteFor(t.id, row);
+        });
+      } else {
+        sw.addEventListener('click', (ev) => ev.stopPropagation());
+      }
       if (editMode) {
         // drag handle
         const handle = document.createElement('div');
@@ -914,44 +924,14 @@ function ensureTagsClosedOnModeChange() {
       if (editMode) {row.appendChild(sw);}
       row.appendChild(nameWrap);
       if(!editMode){row.appendChild(tick);}
-      // If editMode: add color control, drag handle and delete button
+      // If editMode: add delete button with trash icon
       if (editMode) {
-
-
-
-
-
-          
-          // color control -> open our palette anchored to the row
-          const colorBtn = document.createElement('button');
-          colorBtn.type = 'button';
-          colorBtn.className = 'ctrl-btn tag-color-btn';
-          colorBtn.title = 'Change color';
-          colorBtn.textContent = '●';
-          colorBtn.style.padding = '4px';
-          colorBtn.style.minWidth = '28px';
-          colorBtn.style.display = 'inline-flex';
-          colorBtn.style.alignItems = 'center';
-          colorBtn.style.justifyContent = 'center';
-
-          colorBtn.addEventListener('mousedown', (ev) => {
-            ev.stopPropagation();
-            ev.preventDefault();
-            // close any open native palette first
-            closeColorPalette();
-            // open our palette anchored to the row element
-            openColorPaletteFor(t.id, row);
-          });
-
-          row.appendChild(colorBtn);
-
-
-
-        // delete button
+        // delete button with trash icon
         const del = document.createElement('button');
         del.type = 'button';
-        del.className = 'ctrl-btn';
-        del.textContent = 'Delete';
+        del.className = 'delete-icon-btn';
+        del.title = 'Delete tag';
+        del.innerHTML = '<svg viewBox="0 0 24 24"><path d="M3 6h18M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6M10 6V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2"/></svg>';
         del.addEventListener('mousedown', async (ev) => {
           ev.stopPropagation();
           await deleteTag(t.id);
@@ -1137,24 +1117,41 @@ function ensureTagsClosedOnModeChange() {
 
   tagsNewBtn.addEventListener('mousedown', (ev) => {
     ev.stopPropagation();
-    // inline quick add at top of list
+    // improved new tag form with better layout
     const form = document.createElement('div');
-    form.style.display = 'flex';
-    form.style.gap = '8px';
-    form.style.padding = '6px';
+    form.className = 'new-tag-form';
+    
+    const inputRow = document.createElement('div');
+    inputRow.className = 'new-tag-form-row';
+    
     const nameInput = document.createElement('input');
     nameInput.type = 'text';
     nameInput.placeholder = 'Tag name';
+    
     const colorInput = document.createElement('input');
     colorInput.type = 'color';
     colorInput.value = '#8fb7ff';
+    
+    inputRow.appendChild(nameInput);
+    inputRow.appendChild(colorInput);
+    
+    const buttonsRow = document.createElement('div');
+    buttonsRow.className = 'new-tag-form-buttons';
+    
     const save = document.createElement('button');
     save.className = 'ctrl-btn';
     save.textContent = 'Save';
+    
     const cancel = document.createElement('button');
     cancel.className = 'ctrl-btn';
     cancel.textContent = 'Cancel';
-    form.appendChild(nameInput); form.appendChild(colorInput); form.appendChild(save); form.appendChild(cancel);
+    
+    buttonsRow.appendChild(cancel);
+    buttonsRow.appendChild(save);
+    
+    form.appendChild(inputRow);
+    form.appendChild(buttonsRow);
+    
     tagsList.insertBefore(form, tagsList.firstChild);
     nameInput.focus();
 
@@ -1323,7 +1320,8 @@ function ensureTagsClosedOnModeChange() {
     ensureTagsClosedOnModeChange();
   }
 
-  function showAddArea(prefillTitle = '', prefillQuick = '', prefillBody = '') {
+  function 
+  showAddArea(prefillTitle = '', prefillQuick = '', prefillBody = '') {
     
     isAddingOrEditing = true;
     ensureTagsClosedOnModeChange();
@@ -1342,6 +1340,10 @@ function ensureTagsClosedOnModeChange() {
 
     panel.classList.add('mode-add');
     panel.classList.remove('mode-settings');
+
+    tagsBtn.textContent = '+ Tags';
+
+
 
     const existingDel = addArea.querySelector<HTMLButtonElement>('.delete-btn');
     if (existingDel) existingDel.remove();
@@ -1406,6 +1408,8 @@ function ensureTagsClosedOnModeChange() {
     draftPromptTagIds = [];
 
     panel.classList.remove('mode-add');
+    tagsBtn.textContent = 'T';
+
   }
 
   function showSettingsArea() {
@@ -1554,6 +1558,8 @@ chrome.runtime.onMessage.addListener((msg: any, sender, sendResponse) => {
     } else {
       hidePanel();
     }
+    sendResponse({ ok: true }); 
+
   }
 });
 

@@ -1,4 +1,4 @@
-// file: /home/auriga/Desktop/Projects/prompt manager/src/action.ts
+// file: /home/auriga/Desktop/Projects/prompt Drawer/src/action.ts
 // Popup logic: host pattern input + popular sites dropdown + runtime permission request.
 // Full-file replacement.
 

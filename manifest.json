@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Prompt Manager",
+  "name": "Prompt Drawer",
   "version": "1.0.0",
   "description": "Manage and quickly paste/copy prompts (whitelisted hosts only).",
   "permissions": [
@@ -27,7 +27,7 @@
     }
   },
   "action": {
-    "default_title": "Prompt Manager",
+    "default_title": "Prompt Drawer",
     "default_popup": "dist/action.html"
   }
 }

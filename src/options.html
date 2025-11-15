@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Prompt Manager — Options</title>
+    <title>Prompt Drawer — Options</title>
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <style>
       body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial; padding: 18px; color:#111; background:#f7fafc; }
@@ -18,13 +18,11 @@
     </style>
   </head>
   <body>
-    <h1>Prompt Manager — Allowed sites</h1>
-    <p class="small">Add sites where you want the Prompt Drawer to be available. Example: <code>https://chat.openai.com/*</code></p>
+    <h1>Prompt Drawer — Allowed sites</h1>
+    <p class="small">Add the current site to allow the Prompt Drawer to be used here.</p>
 
-    <label for="new-host">Add host pattern</label>
-    <input id="new-host" type="text" placeholder="https://example.com/*" />
     <div>
-      <button id="request-btn">Request permission & enable</button>
+      <button id="add-current-site-btn" style="width: 100%; text-align: center;">Add my prompts to this site</button>
     </div>
 
     <h2 style="margin-top:18px">Enabled sites</h2>

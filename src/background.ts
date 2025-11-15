@@ -1,4 +1,4 @@
-// file: /home/auriga/Desktop/Projects/prompt manager/src/background.ts
+// file: /home/auriga/Desktop/Projects/prompt Drawer/src/background.ts
 // Background service worker: handles permission grants and injects content script into open tabs for allowed patterns.
 
 
@@ -76,7 +76,7 @@ chrome.commands.onCommand.addListener(async (command) => {
       chrome.notifications?.create?.({
         type: 'basic',
         iconUrl: 'icon.png',
-        title: 'Prompt Manager',
+        title: 'Prompt Drawer',
         message: 'Unable to determine the active tab.'
       });
       return;
@@ -92,7 +92,7 @@ chrome.commands.onCommand.addListener(async (command) => {
       chrome.notifications?.create?.({
         type: 'basic',
         iconUrl: 'icon.png',
-        title: 'Prompt Manager',
+        title: 'Prompt Drawer',
         message: 'Invalid page URL — cannot request permission.'
       });
       return;
@@ -110,8 +110,8 @@ chrome.commands.onCommand.addListener(async (command) => {
                 chrome.notifications?.create?.({
                   type: 'basic',
                   iconUrl: 'icon.png',
-                  title: 'Prompt Manager',
-                  message: 'Prompt Manager is not enabled on this site. Open Options to add this site.'
+                  title: 'Prompt Drawer',
+                  message: 'Prompt Drawer is not enabled on this site. Open Options to add this site.'
                 });
               });
           }
@@ -126,7 +126,7 @@ chrome.commands.onCommand.addListener(async (command) => {
           chrome.notifications?.create?.({
             type: 'basic',
             iconUrl: 'icon.png',
-            title: 'Prompt Manager',
+            title: 'Prompt Drawer',
             message: 'Permission request failed. See console for details.'
           });
           return;
@@ -137,7 +137,7 @@ chrome.commands.onCommand.addListener(async (command) => {
           chrome.notifications?.create?.({
             type: 'basic',
             iconUrl: 'icon.png',
-            title: 'Prompt Manager',
+            title: 'Prompt Drawer',
             message: 'Permission not granted. You can enable the extension from Options.'
           });
           return;
@@ -157,7 +157,7 @@ chrome.commands.onCommand.addListener(async (command) => {
         chrome.notifications?.create?.({
           type: 'basic',
           iconUrl: 'icon.png',
-          title: 'Prompt Manager',
+          title: 'Prompt Drawer',
           message: `Enabled on ${originPattern}`
         });
       });
