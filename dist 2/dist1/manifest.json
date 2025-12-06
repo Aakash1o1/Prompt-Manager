@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Prompt Drawer",
   "version": "1.0.0",
-  "description": "Manage and quickly paste/copy prompts (whitelisted hosts only).",
+  "description": "Instantly access your prompts with no clicks on any site. You control which websites the extension can access.",
   "permissions": [
     "storage",
     "scripting",
@@ -14,20 +14,20 @@
     "https://*/*"
   ],
   "background": {
-    "service_worker": "dist/background.js"
+    "service_worker": "background.js"
   },
   "options_ui": {
-    "page": "dist/options.html",
+    "page": "options.html",
     "open_in_tab": true
   },
-"commands": {
+  "commands": {
     "open-prompt-drawer": {
       "suggested_key": { "default": "Alt+P" },
-      "description": "Toggle the Prompt Drawer UI"
+      "description": "Open prompt popup"
     }
   },
-"action": {
+  "action": {
     "default_title": "Prompt Drawer",
-    "default_popup": "dist/action.html"
+    "default_popup": "action.html"
   }
 }

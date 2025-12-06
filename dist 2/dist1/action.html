@@ -49,39 +49,16 @@
     .site-row:not(:last-child) { border-bottom: 1px solid #e5e7eb; }
     .remove-btn { background: var(--red-bg); color: var(--red-fg); border:none; padding:5px 10px; border-radius:6px; cursor:pointer; font-size:12px; font-weight: 600; }
     .remove-btn:hover { background:#ef4444; color:#fff; }
-    
-    .main-action-btn {
-      width: 100%;
-      text-align: center;
-      margin-top: 16px;
-      padding: 10px;
-      border-radius: 8px;
-      border: none;
-      background: var(--accent); /* Default blue background */
-      color: #fff;
-      cursor: pointer;
-      font-weight: 600;
-      font-size: 14px;
-      transition: background-color 0.15s ease, color 0.15s ease; /* Smooth transition */
-    }
-
-
-
-    button.danger {
-      background: var(--red-bg);
-      color: var(--red-fg);
-      border: 1px solid #fca5a5;
-    }
-    button.danger:hover {
-      background: #dc2626;
-      color: #fff;
-    }
   </style>
 </head>
 <body>
-  <h3>Enabled Sites</h3>
-  <div class="small">Manage sites where the Prompt Drawer is active.</div>
+  <h3>Enable Prompt Drawer on a Site</h3>
+  <div class="small">Enter a host pattern (e.g., <code>https://chatgpt.com/*</code>)</div>
 
+  <label for="host">Manual Site Input</label>
+  <input id="host" type="text" placeholder="https://example.com/*" />
+
+  <!-- NEW: Enabled Sites Dropdown -->
   <div class="dropdown" id="enabled-sites-dropdown">
     <div class="dd-toggle" id="enabled-sites-toggle" role="button" aria-expanded="false">
       <div class="label">View Enabled Sites</div>
@@ -92,8 +69,18 @@
     </div>
   </div>
 
-  <button id="add-current-site-btn" class="main-action-btn">Add to this site</button>
+  <!-- Popular Sites Dropdown -->
+  <div class="dropdown" id="popular-sites-dropdown">
+    <div class="dd-toggle" id="popular-sites-toggle" role="button" aria-expanded="false">
+      <div class="label">Popular Sites</div>
+      <svg class="dd-chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#374151"><path d="M6 9l6 6 6-6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="dd-list" id="popular-sites-list" style="display: none;">
+      <!-- JS renders site buttons here -->
+    </div>
+  </div>
 
+  <button id="enable">Request Permission & Enable</button>
   <div id="status" class="small"></div>
 
   <script src="action.js"></script>

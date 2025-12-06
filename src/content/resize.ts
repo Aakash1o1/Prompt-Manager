@@ -1,12 +1,11 @@
 // src/content/resize.ts
 // Creates invisible resize handles around the panel and wires pointer events
 // so the user can resize by dragging any edge or corner.
-// The caller must provide getSettings & saveSettings to persist new sizes.
 
 type Settings = {
   popupHeightVh: number;
   popupWidthPx: number;
-  fontSizePx: number; // +++ ADD THIS LINE
+  fontSizePx: number; 
   theme: 'light' | 'dark';
   hotspotPosition: 'corner' | 'edge';
   hotspotWidthPx: number;
@@ -77,8 +76,14 @@ export function setupResizeHandles(opts: {
     panel.querySelectorAll<HTMLElement>('.resize-handle').forEach((el) => {
       el.addEventListener('pointerdown', (ev) => {
         ev.stopPropagation();
+        el.setPointerCapture(ev.pointerId); 
+
         (ev.target as HTMLElement).setPointerCapture?.((ev as PointerEvent).pointerId);
         startResize((ev as PointerEvent).clientX, (ev as PointerEvent).clientY, (el.className || '').replace('resize-handle','').trim());
+        
+        el.addEventListener('pointerup', (ev) => {
+            el.releasePointerCapture(ev.pointerId);
+        });
       });
     });
 
@@ -87,6 +92,11 @@ export function setupResizeHandles(opts: {
 
   function startResize(mouseX: number, mouseY: number, cls: string) {
     isResizing = true;
+    
+    // --- ADDED: Toggle Class on Start ---
+    panel.classList.add('is-resizing');
+    // ------------------------------------
+
     resizeDir = cls.replace('resize-','');
     const rect = panel.getBoundingClientRect();
     resizeStart = { x: mouseX, y: mouseY, w: rect.width, h: rect.height };
@@ -113,9 +123,14 @@ export function setupResizeHandles(opts: {
   document.addEventListener('pointerup', async () => {
     if (!isResizing) return;
     isResizing = false;
+    
+    // --- ADDED: Remove Class on End ---
+    panel.classList.remove('is-resizing');
+    // ----------------------------------
+
     resizeDir = null;
     document.documentElement.style.userSelect = '';
-    // persist new size to settings (convert height px -> vh)
+    
     try {
       const s = getSettings();
       const vh = Math.round((panel.offsetHeight / window.innerHeight) * 100);
@@ -127,10 +142,5 @@ export function setupResizeHandles(opts: {
     }
   });
 
-  // use destructured getSettings/saveSettings directly (no duplicate fn names)
-//   function getSettings() { return getSettings; } // dummy to satisfy inner use outside; (we won't call this function)
-//   function saveSettings(s: Settings) { return saveSettings(s); } // dummy; not used
-
-  // Actually create handles now
   ensureResizeHandles();
 }

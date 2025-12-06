@@ -64,110 +64,119 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // When the user presses Alt+ P(command), toggle the popup in the active tab.
 // If the content script is not injected into the active tab, we'll try to notify the user.
-chrome.commands.onCommand.addListener(async (command) => {
-  if (command !== 'open-prompt-drawer') return;
+// --------------------------------------------------------------------------------------------------------------------------------
+// src/background.ts
 
-  // Get active tab (user gesture via keyboard command allows reading its URL)
-  try {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    const tab = tabs && tabs[0];
-    if (!tab || !tab.id || !tab.url) {
-      // No usable tab
-      chrome.notifications?.create?.({
-        type: 'basic',
-        iconUrl: 'icon.png',
-        title: 'Prompt Drawer',
-        message: 'Unable to determine the active tab.'
-      });
-      return;
-    }
+// When the user presses Alt+P, toggle the popup or request permission.
+// src/background.ts
 
-    // Build origin pattern (https://origin/*)
-    let originPattern: string;
-    try {
-      const u = new URL(tab.url);
-      originPattern = `${u.protocol}//${u.hostname}/*`;
-    } catch (err) {
-      // fallback: can't parse URL
-      chrome.notifications?.create?.({
-        type: 'basic',
-        iconUrl: 'icon.png',
-        title: 'Prompt Drawer',
-        message: 'Invalid page URL — cannot request permission.'
-      });
-      return;
-    }
-
-    // If permission already granted, just try toggling/injecting.
-    chrome.permissions.contains({ origins: [originPattern] }, async (has) => {
-      if (has) {
-        // Already allowed — try messaging content script (same behavior as before)
-        chrome.tabs.sendMessage(tab.id!, { type: 'TOGGLE_POPUP', source: 'keyboard' }, (resp) => {
-          if (chrome.runtime.lastError) {
-            // fallback: try injection (content script might not be injected yet)
-            chrome.scripting.executeScript({ target: { tabId: tab.id! }, files: ['dist/content.js'] })
-              .catch(() => {
-                chrome.notifications?.create?.({
-                  type: 'basic',
-                  iconUrl: 'icon.png',
-                  title: 'Prompt Drawer',
-                  message: 'Prompt Drawer is not enabled on this site. Open Options to add this site.'
-                });
-              });
-          }
-        });
-        return;
-      }
-
-      // Request persistent permission for this origin
-      chrome.permissions.request({ origins: [originPattern] }, async (granted) => {
-        if (chrome.runtime.lastError) {
-          console.error('permissions.request error', chrome.runtime.lastError);
-          chrome.notifications?.create?.({
-            type: 'basic',
-            iconUrl: 'icon.png',
-            title: 'Prompt Drawer',
-            message: 'Permission request failed. See console for details.'
-          });
-          return;
-        }
-
-        if (!granted) {
-          // User denied. Optional: attempt one-time injection using activeTab behavior.
-          chrome.notifications?.create?.({
-            type: 'basic',
-            iconUrl: 'icon.png',
-            title: 'Prompt Drawer',
-            message: 'Permission not granted. You can enable the extension from Options.'
-          });
-          return;
-        }
-
-        // Permission granted. Persist and inject.
-        try {
-          // reuse your helper to persist + inject across open tabs
-          await onPermissionGrantedForPattern(originPattern);
-          // inject into the current tab immediately
-          await chrome.scripting.executeScript({ target: { tabId: tab.id! }, files: ['dist/content.js'] });
-        } catch (e) {
-          console.warn('Post-permission injection failed', e);
-        }
-
-        // Optional: notify user briefly
-        chrome.notifications?.create?.({
-          type: 'basic',
-          iconUrl: 'icon.png',
-          title: 'Prompt Drawer',
-          message: `Enabled on ${originPattern}`
-        });
-      });
-    });
-
-  } catch (e) {
-    console.error('commands handler failed', e);
+// REUSABLE FUNCTION to handle activation from any source (keyboard or icon click)
+async function handleActivation(tab: chrome.tabs.Tab) {
+  if (!tab?.id || !tab.url) {
+    console.warn('Prompt Drawer: Cannot determine active tab.');
+    return;
   }
+
+  let originPattern: string;
+  try {
+    const u = new URL(tab.url);
+    originPattern = `${u.protocol}//${u.hostname}/*`;
+  } catch (e) {
+    console.warn(`Prompt Drawer: Invalid URL for permission request: ${tab.url}`);
+    return;
+  }
+
+  // 1. Check if we already have permission.
+  chrome.permissions.contains({ origins: [originPattern] }, (hasPermission) => {
+    if (hasPermission) {
+      // SCENARIO A: Permission exists. Toggle the UI.
+      chrome.tabs.sendMessage(tab.id!, { type: 'TOGGLE_POPUP' }, (response) => {
+        if (chrome.runtime.lastError) {
+          // Fallback: If content script isn't there, inject it and then toggle.
+          console.log('Content script not ready, injecting now.');
+          chrome.scripting.executeScript({
+            target: { tabId: tab.id! },
+            files: ['dist/content.js'],
+          }).then(() => {
+            chrome.tabs.sendMessage(tab.id!, { type: 'TOGGLE_POPUP' });
+          }).catch(err => console.error("Injection fallback failed:", err));
+        }
+      });
+    } else {
+      // SCENARIO B: No permission. Request it from the user.
+      chrome.permissions.request({ origins: [originPattern] }, async (granted) => {
+        if (granted) {
+          // User said yes! Inject the script and immediately open the UI.
+          console.log(`Permission granted for ${originPattern}. Injecting...`);
+          try {
+            await chrome.scripting.executeScript({ target: { tabId: tab.id! }, files: ['dist/content.js'] });
+            await chrome.tabs.sendMessage(tab.id!, { type: 'TOGGLE_POPUP' });
+          } catch (e) {
+            console.error('Post-permission injection/toggle failed', e);
+          }
+        } else {
+          // User said no.
+          console.log('Permission not granted.');
+        }
+      });
+    }
+  });
+}
+
+// src/background.ts
+
+// When the user presses Alt+P, decide whether to open the drawer or the action popup.
+chrome.commands.onCommand.addListener(async (command, tab) => {
+  if (command !== 'open-prompt-drawer') {
+    return;
+  }
+
+  // Ensure we have a valid tab to work with.
+  if (!tab?.id || !tab.url) {
+    console.warn('Prompt Drawer: Cannot determine active tab.');
+    // If we can't get a tab, just open the popup as a fallback.
+    chrome.action.openPopup();
+    return;
+  }
+
+  let originPattern: string;
+  try {
+    // Create the origin pattern (e.g., "https://www.google.com/*")
+    originPattern = new URL(tab.url).origin + '/*';
+  } catch (e) {
+    // This happens on special pages like chrome://extensions. Open the popup.
+    console.warn(`Prompt Drawer: Invalid URL for permission check: ${tab.url}`);
+    chrome.action.openPopup();
+    return;
+  }
+
+  // Check if we have permission for the current site.
+  chrome.permissions.contains({ origins: [originPattern] }, (hasPermission) => {
+    if (hasPermission) {
+      // --- BEHAVIOR 1: PERMISSION GRANTED ---
+      // Send a message to the content script to toggle the main UI.
+      chrome.tabs.sendMessage(tab.id!, { type: 'TOGGLE_POPUP' }, (response) => {
+        // Fallback: If the content script isn't there, inject it and then toggle.
+        if (chrome.runtime.lastError) {
+          console.log('Content script not ready, injecting now.');
+          chrome.scripting.executeScript({
+            target: { tabId: tab.id! },
+            files: ['dist/content.js'],
+          }).then(() => {
+            chrome.tabs.sendMessage(tab.id!, { type: 'TOGGLE_POPUP' });
+          }).catch(err => console.error("Injection fallback failed:", err));
+        }
+      });
+    } else {
+      // --- BEHAVIOR 2: PERMISSION NOT GRANTED ---
+      // Programmatically open the action.html popup.
+      chrome.action.openPopup();
+    }
+  });
 });
 
+
+//-------------------------------------------------------------------------------
 
 
 
