@@ -1,17 +1,17 @@
 import { Component } from './Component';
 import { Store, Prompt, Tag } from '../store';
-import { getRectsMap, playFLIP } from '../drag';
+import Sortable from 'sortablejs';
 
 
 export class PromptList extends Component {
     private list: HTMLElement | null = null;
-    private draggedId: string | null = null;
-    private placeholder: HTMLElement | null = null;
     private MAX_CHIPS_TO_SHOW = 3;
 
     // --- PROPERTIES ---
     private selectedIndex: number = 0;
     private filteredPrompts: Prompt[] = []; // To track what is currently visible
+    private sortable: Sortable | null = null;
+
     // ------------------
 
     mount(parent: HTMLElement) {
@@ -27,17 +27,16 @@ export class PromptList extends Component {
         this.store.subscribe('tags_updated', () => this.render());
 
         // Setup static listeners ONCE
-        this.setupContainerDragEvents();
 
         // Initial render
+        this.initSortable();
+
         this.render();
     }
 
     render() {
         if (!this.list) return;
 
-        // 1. CAPTURE SNAPSHOT (Before DOM changes)
-        const beforeRects = getRectsMap(this.shadow);
 
         const scrollTop = this.list.scrollTop;
 
@@ -76,17 +75,7 @@ export class PromptList extends Component {
             this.list!.appendChild(row);
         });
 
-        // Restore scroll
         this.list.scrollTop = scrollTop;
-
-        // Render spacer
-        this.renderDragSpacer();
-
-        // 4. PLAY ANIMATION
-        // Compare new DOM with Snapshot using FLIP
-        requestAnimationFrame(() => {
-            playFLIP(this.shadow, beforeRects);
-        });
     }
 
     // src/content/components/PromptList.ts
@@ -95,133 +84,8 @@ export class PromptList extends Component {
 
 // src/content/components/PromptList.ts
 
-    private setupContainerDragEvents() {
-        if (!this.list) return;
-
-        // --- DELEGATION: Listen on the container for events bubbling up ---
-
-        // DRAG START: Fired once when a drag handle is first dragged.
-        this.list.addEventListener('dragstart', (ev) => {
-            const target = ev.target as HTMLElement;
-
-            // Only act if the drag started on a '.drag-handle' element
-            if (!target.classList.contains('drag-handle')) return;
-            
-            // Find the parent '.row' element
-            const row = target.closest('.row') as HTMLElement;
-            if (!row || !row.dataset.id) return;
-
-            // Set state for the drag operation
-            this.draggedId = row.dataset.id;
-            
-            // Use a timeout to apply the class, allowing the browser's "ghost" image to be created first
-            setTimeout(() => {
-                row.classList.add('dragging');
-            }, 0);
-
-            if (ev.dataTransfer) {
-                ev.dataTransfer.setData('text/plain', row.dataset.id);
-                ev.dataTransfer.effectAllowed = 'move';
-            }
-        });
-
-        // DRAG END: Fired once when the drag operation finishes (drop or cancel).
-        this.list.addEventListener('dragend', (ev) => {
-            // No need to check target, just clean up any active drag state
-            this.draggedId = null;
-
-            // Find any element that is still marked as dragging and clean it up
-            const draggingEl = this.shadow.querySelector('.row.dragging');
-            if (draggingEl) {
-                draggingEl.classList.remove('dragging');
-            }
-            this.removePlaceholder();
-        });
-
-        // DRAG OVER: Fired continuously as you drag over the list.
-        this.list.addEventListener('dragover', (ev) => {
-            ev.preventDefault(); // This is CRITICAL to allow 'drop' to fire.
-
-            const ph = this.ensurePlaceholder();
-            const rows = Array.from(this.list!.querySelectorAll<HTMLElement>('.row:not(.dragging)'));
-
-            let nextElement: HTMLElement | null = null;
-            for (const row of rows) {
-                const box = row.getBoundingClientRect();
-                if (ev.clientY < box.top + box.height / 2) {
-                    nextElement = row;
-                    break;
-                }
-            }
-
-            if (nextElement) {
-                this.list!.insertBefore(ph, nextElement);
-            } else {
-                this.list!.appendChild(ph);
-            }
-        });
-        
-        // DROP: Fired once on the element you drop onto.
-        this.list.addEventListener('drop', (ev) => {
-            ev.preventDefault();
-            
-            // Find the placeholder to determine drop position
-            const ph = this.list!.querySelector('.placeholder');
-            if (!ph) {
-                // If no placeholder, something went wrong. Clean up.
-                this.removePlaceholder();
-                return;
-            }
-
-            const srcId = this.draggedId ?? ev.dataTransfer?.getData('text/plain') ?? null;
-            if (!srcId) { this.removePlaceholder(); return; }
-
-            const nextRow = ph.nextElementSibling as HTMLElement | null;
-            let targetId: string | null = null;
-            
-            if (nextRow && nextRow.classList.contains('row') && nextRow.dataset.id) {
-                targetId = nextRow.dataset.id;
-            }
-            
-            // Prevent dropping on self
-            if (srcId !== targetId) {
-                this.store.reorderPrompts(srcId, targetId);
-            }
-            
-            // Cleanup is handled by dragend, but we can do it here too for safety
-            this.removePlaceholder();
-        });
-    }
 
     // --- Only handles the bottom spacer ---
-    private renderDragSpacer() {
-        if (!this.list) return;
-
-        const endSpacer = this.el('div');
-        endSpacer.style.minHeight = '12px';
-
-        endSpacer.addEventListener('dragover', (ev) => {
-            ev.preventDefault();
-            const ph = this.ensurePlaceholder();
-            if (this.list!.lastElementChild !== ph) {
-                this.list!.appendChild(ph);
-            }
-        });
-
-        endSpacer.addEventListener('drop', (ev) => {
-            ev.preventDefault();
-            const srcId = this.draggedId ?? ev.dataTransfer?.getData('text/plain') ?? null;
-            if (!srcId) return;
-
-            // --- FIX: Pass null to move to end ---
-            this.store.reorderPrompts(srcId, null);
-            // -------------------------------------
-
-            this.removePlaceholder();
-        });
-
-        this.list.appendChild(endSpacer);
-    }
 
     // --- PUBLIC METHODS ---
     public selectNext() {
@@ -299,7 +163,6 @@ export class PromptList extends Component {
         if (!isFiltered) {
             const handle = this.el('div', 'drag-handle');
             handle.innerHTML = '&#x2261;';
-            handle.draggable = true;
 
             // Prevent click on handle from triggering copy on the row
             handle.addEventListener('click', (ev) => {
@@ -365,17 +228,6 @@ export class PromptList extends Component {
         return chips;
     }
 
-    private ensurePlaceholder() {
-        if (this.placeholder) return this.placeholder;
-        this.placeholder = this.el('div', 'placeholder');
-        return this.placeholder;
-    }
-
-    private removePlaceholder() {
-        if (!this.placeholder) return;
-        if (this.placeholder.parentElement) this.placeholder.parentElement.removeChild(this.placeholder);
-        this.placeholder = null;
-    }
 
     private getContrastTextColor(hexColor: string): string {
         if (!hexColor || !hexColor.startsWith('#')) return '#ffffff';
@@ -386,4 +238,34 @@ export class PromptList extends Component {
         const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
         return (yiq >= 128) ? '#000000' : '#ffffff';
     }
+
+    private initSortable() {
+        if (!this.list) return;
+
+        this.sortable = new Sortable(this.list, {
+            animation: 150,
+            ghostClass: "ghost",  // Class for the drop placeholder
+            chosenClass: "chosen", // Class for the item being dragged
+            handle: ".drag-handle", // Restrict drag start to this handle
+            fallbackTolerance: 5, 
+            // Fired when the user finishes dragging
+            onEnd: (evt) => {
+                const { oldIndex, newIndex } = evt;
+
+                // Do nothing if the position hasn't changed
+                if (oldIndex === undefined || newIndex === undefined || oldIndex === newIndex) {
+                    return;
+                }
+                
+                // Silently update the store's data to match the new DOM order
+                (this.store as any).reorderPromptsSilently(oldIndex, newIndex);
+            },
+        });
+    }
+
+
+
+
 }
+
+

@@ -69,6 +69,19 @@ export class Store {
         this.setupStorageListener();
     }
 
+    reorderPromptsSilently(oldIndex: number, newIndex: number) {
+        if (oldIndex === newIndex) return;
+
+        // Move the item
+        const [item] = this.prompts.splice(oldIndex, 1);
+        this.prompts.splice(newIndex, 0, item);
+        
+        // Save to storage, but DO NOT call notify('prompts_updated')
+        setStorage({ [PROMPTS_KEY]: this.prompts });
+    }
+
+
+
     private setupStorageListener() {
         chrome.storage.onChanged.addListener((changes, area) => {
             if (area !== 'local') return;

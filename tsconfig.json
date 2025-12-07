@@ -1,12 +1,13 @@
 {
   "compilerOptions": {
-    "target": "ES2019",
-    "lib": ["ES2021", "DOM"],
-    "module": "ESNext",
+    "target": "es2020",
+    "module": "esnext",
     "moduleResolution": "node",
-    "strict": false,
-    "skipLibCheck": true,
-    "types": ["chrome"]
+    "strict": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true, /* <-- THIS IS THE FIX */
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*.ts"]
 }

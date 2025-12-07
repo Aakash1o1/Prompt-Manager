@@ -121,6 +121,8 @@ input, textarea, button, select { font-family: var(--font-family) !important; fo
   align-items: center;
   justify-content: center;
   z-index: 1000000;
+  pointer-events: auto;
+
   cursor: pointer;
   box-shadow: 0 var(--padding-small) 20px rgba(0,0,0,0.35);
   font-size: 16px;
@@ -137,6 +139,8 @@ input, textarea, button, select { font-family: var(--font-family) !important; fo
   pointer-events: auto; 
   border-radius: var(--border-radius-tiny);
   writing-mode: vertical-rl;
+  pointer-events: auto; /* <-- ENSURE THIS IS HERE TOO */
+
   font-size: var(--font-size);
   color: transparent; /* hide inner emoji/text */
   background: linear-gradient(86deg, rgb(0 12 255 / 0%) 0%, rgb(41 169 255 / 88%) 40%, rgb(255 255 255 / 0%) 100%);
@@ -578,6 +582,19 @@ textarea { min-height: 96px; resize: vertical; }
      Opacity 0 or 0.1 is safer. */
   pointer-events: none;
 }
+.row.chosen {
+  background: rgba(143, 183, 255, 0.1) !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  cursor: grabbing !important;
+}
+
+/* Style for the placeholder where the item will be dropped */
+.row.ghost {
+  opacity: 0.4;
+  background: rgba(143, 183, 255, 0.2);
+  border: 1px dashed rgba(143, 183, 255, 0.5);
+}
+
 
 
 `;
