@@ -26,6 +26,7 @@ export type Settings = {
     theme: 'light' | 'dark';
     hotspotPosition: 'corner' | 'edge';
     hotspotWidthPx: number;
+    autoCloseOnHover: boolean;
 };
 
 // --- Constants ---
@@ -40,7 +41,8 @@ const DEFAULT_SETTINGS: Settings = {
     fontSizePx: 13,
     theme: 'dark',
     hotspotPosition: 'edge',
-    hotspotWidthPx: 24
+    hotspotWidthPx: 24,
+    autoCloseOnHover: true
 };
 
 // --- Helper Functions ---
@@ -75,7 +77,7 @@ export class Store {
         // Move the item
         const [item] = this.prompts.splice(oldIndex, 1);
         this.prompts.splice(newIndex, 0, item);
-        
+
         // Save to storage, but DO NOT call notify('prompts_updated')
         setStorage({ [PROMPTS_KEY]: this.prompts });
     }
@@ -85,7 +87,7 @@ export class Store {
     private setupStorageListener() {
         chrome.storage.onChanged.addListener((changes, area) => {
             if (area !== 'local') return;
-            
+
             // Update local state if external storage changed
             if (changes[PROMPTS_KEY]) {
                 this.prompts = changes[PROMPTS_KEY].newValue || [];
@@ -119,7 +121,7 @@ export class Store {
 
             this.notify('loaded');
             this.notify('prompts_updated');
-            this.notify('tags_updated'); 
+            this.notify('tags_updated');
             this.notify('settings_updated');
         } catch (e) {
             console.error('Store: Failed to load data', e);
@@ -302,7 +304,7 @@ export class Store {
 
         // Clamp target index
         const clamped = Math.max(0, Math.min(targetIndex, this.tags.length));
-        
+
         // Insert item
         this.tags.splice(clamped, 0, item);
 

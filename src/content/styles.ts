@@ -400,8 +400,100 @@ input[type="text"]::placeholder, textarea::placeholder {
   opacity: 1;
 }
 textarea { min-height: 96px; resize: vertical; }
-.settings-row { display:flex; gap:8px; align-items:center; justify-content:space-between; }
-.settings-row label { width:60%; color:var(--txt); font-size: calc(var(--font-size) * 1); }
+.settings-row { 
+  display:flex; 
+  gap:8px; 
+  align-items:center; 
+  /* justify-content has been removed */
+}
+.settings-row label { 
+  /* width: 60%; has been removed */
+  color: var(--txt); 
+  font-size: calc(var(--font-size) * 1); 
+}
+
+
+/* Add this new rule */
+.settings-row > label:not(.toggle-switch) {
+  flex-grow: 1;
+  white-space: nowrap; /* Prevents the label from wrapping if the window is narrow */
+}
+
+/* Toggle Switch Styles */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  margin-left: auto; /*  <-- This pushes the element to the right */
+  flex-shrink: 0;     /*  <-- This prevents it from shrinking if space is tight */
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border);
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+  border-radius: 24px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 2px;
+  bottom: 2px;
+  background-color: var(--txt);
+  transition: transform 0.3s ease, background-color 0.3s ease;
+  border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(20px);
+  background-color: #fff;
+}
+
+.toggle-switch input:focus + .toggle-slider {
+  box-shadow: 0 0 0 2px rgba(143, 183, 255, 0.3);
+}
+
+input[type="number"] {
+  width: 80px;
+  padding: var(--padding-tiny) var(--padding-small);
+  border-radius: var(--border-radius-small);
+  border: 1px solid var(--border-input);
+  background: var(--bg-input-solid);
+  color: var(--txt);
+  font-size: var(--font-size);
+}
+
+select {
+  padding: var(--padding-tiny) var(--padding-small);
+  border-radius: var(--border-radius-small);
+  border: 1px solid var(--border-input);
+  background: var(--bg-input-solid);
+  color: var(--txt);
+  font-size: var(--font-size);
+  cursor: pointer;
+}
+
 
 .toast {
   position: absolute;

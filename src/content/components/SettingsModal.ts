@@ -8,7 +8,8 @@ import { Settings } from '../store';
 export class SettingsModal extends Component {
     private area: HTMLElement | null = null;
     private fontSizeInput: HTMLInputElement | null = null;
-    private themeSelect: HTMLSelectElement | null = null;
+    private themeToggle: HTMLInputElement | null = null;
+    private autoCloseToggle: HTMLInputElement | null = null;
     private hotspotPosSelect: HTMLSelectElement | null = null;
     private saveBtn: HTMLButtonElement | null = null;
     private cancelBtn: HTMLButtonElement | null = null;
@@ -21,7 +22,8 @@ export class SettingsModal extends Component {
     mount(parent: HTMLElement) {
         this.area = parent.querySelector('#settings-area');
         this.fontSizeInput = parent.querySelector('#s-font-size');
-        this.themeSelect = parent.querySelector('#s-theme');
+        this.themeToggle = parent.querySelector('#s-theme');
+        this.autoCloseToggle = parent.querySelector('#s-auto-close');
         this.hotspotPosSelect = parent.querySelector('#s-hotspot-pos');
         this.saveBtn = parent.querySelector('#s-save');
         this.cancelBtn = parent.querySelector('#s-cancel');
@@ -57,7 +59,8 @@ export class SettingsModal extends Component {
 
     private loadSettings() {
         if (this.fontSizeInput) this.fontSizeInput.value = String(this.store.settings.fontSizePx);
-        if (this.themeSelect) this.themeSelect.value = this.store.settings.theme;
+        if (this.themeToggle) this.themeToggle.checked = this.store.settings.theme === 'dark';
+        if (this.autoCloseToggle) this.autoCloseToggle.checked = this.store.settings.autoCloseOnHover;
         if (this.hotspotPosSelect) this.hotspotPosSelect.value = this.store.settings.hotspotPosition;
     }
 
@@ -69,8 +72,12 @@ export class SettingsModal extends Component {
             if (!isNaN(fontSize)) updates.fontSizePx = fontSize;
         }
 
-        if (this.themeSelect) {
-            updates.theme = this.themeSelect.value as 'light' | 'dark';
+        if (this.themeToggle) {
+            updates.theme = this.themeToggle.checked ? 'dark' : 'light';
+        }
+
+        if (this.autoCloseToggle) {
+            updates.autoCloseOnHover = this.autoCloseToggle.checked;
         }
 
         if (this.hotspotPosSelect) {

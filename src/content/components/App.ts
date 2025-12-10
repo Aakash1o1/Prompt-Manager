@@ -17,7 +17,7 @@ export class App extends Component {
     private host: HTMLElement;
     private panel: HTMLElement | null = null;
     private hotzone: HTMLElement | null = null;
-    
+
     // Backdrop for click-outside handling
     private backdrop: HTMLElement | null = null;
 
@@ -92,7 +92,7 @@ export class App extends Component {
     private setupEventListeners() {
         // --- Use helper method for opening editor ---
         this.shadow.addEventListener('open-add-mode', () => this.openEditor());
-        
+
         // --- Use helper method for editing ---
         this.shadow.addEventListener('edit-prompt', ((e: CustomEvent) => {
             this.openEditor(e.detail.promptId);
@@ -108,20 +108,20 @@ export class App extends Component {
         this.shadow.addEventListener('nav-next', () => this.promptList.selectNext());
         this.shadow.addEventListener('nav-prev', () => this.promptList.selectPrev());
         this.shadow.addEventListener('nav-copy', () => this.promptList.copySelected());
-        
+
         // Reset selection when search changes
         this.shadow.addEventListener('nav-reset', () => {
-             // We rely on PromptList.render() logic to reset the index
+            // We rely on PromptList.render() logic to reset the index
         });
 
         // --- Listen for editor closing to reset dropdown ---
         this.shadow.addEventListener('editor-closed', () => {
             // Reset Dropdown to default "Filter Mode"
             this.tagDropdown.onTagSelect = null;
-            this.tagDropdown.activeTagIds = []; 
-            
+            this.tagDropdown.activeTagIds = [];
+
             // Refresh to show global filters
-            this.tagDropdown.refresh(); 
+            this.tagDropdown.refresh();
         });
 
         // --- GLOBAL TOAST LISTENER ---
@@ -142,15 +142,15 @@ export class App extends Component {
         this.tagDropdown.onTagSelect = (tagId) => {
             // Update the Editor's data
             this.promptEditor.toggleTag(tagId);
-            
+
             // Update the Dropdown's visuals (Checkmarks)
             this.tagDropdown.activeTagIds = this.promptEditor.draftTagIds;
         };
 
         // 3. Ensure if editor changes tags internally, dropdown updates
         this.promptEditor.onTagsChanged = () => {
-             this.tagDropdown.activeTagIds = this.promptEditor.draftTagIds;
-             this.tagDropdown.refresh(); // Ensure this calls refresh()
+            this.tagDropdown.activeTagIds = this.promptEditor.draftTagIds;
+            this.tagDropdown.refresh(); // Ensure this calls refresh()
         };
 
         // 4. Refresh immediately so checkmarks appear NOW
@@ -160,12 +160,12 @@ export class App extends Component {
     // --- TOAST HELPER ---
     private showToast(msg: string) {
         if (!this.toastEl) return;
-        
+
         this.toastEl.textContent = msg;
         this.toastEl.classList.add('show');
-        
+
         if (this.toastTimer) clearTimeout(this.toastTimer);
-        
+
         this.toastTimer = window.setTimeout(() => {
             if (this.toastEl) this.toastEl.classList.remove('show');
             this.toastTimer = null;
@@ -219,31 +219,31 @@ export class App extends Component {
             }
         });
         // --------------------------------------------------
-        
-// src/content/components/App.ts
+
+        // src/content/components/App.ts
 
         document.addEventListener('mousedown', (ev) => {
-             if (!this.panel?.classList.contains('open')) return;
+            if (!this.panel?.classList.contains('open')) return;
 
-             const path = (ev as any).composedPath ? (ev as any).composedPath() : [ev.target];
-             
-             // Now that mode is 'open', path includes this.panel and internal elements correctly
-             const isInsidePanel = path.includes(this.panel);
-             const isInsideHotspot = path.includes(this.hotzone);
-             
-             // Check if click is inside dropdown
-             const isInsideDropdown = path.some((el: any) => {
-                 return el instanceof Element && (el.id === 'tags-dropdown' || el.id === 'tags-btn');
-             });
+            const path = (ev as any).composedPath ? (ev as any).composedPath() : [ev.target];
 
-             if (!isInsidePanel && !isInsideHotspot) {
-                 this.closePanel();
-                 return;
-             }
+            // Now that mode is 'open', path includes this.panel and internal elements correctly
+            const isInsidePanel = path.includes(this.panel);
+            const isInsideHotspot = path.includes(this.hotzone);
 
-             if (isInsidePanel && !isInsideDropdown && this.tagDropdown.isOpen()) {
-                 this.tagDropdown.close();
-             }
+            // Check if click is inside dropdown
+            const isInsideDropdown = path.some((el: any) => {
+                return el instanceof Element && (el.id === 'tags-dropdown' || el.id === 'tags-btn');
+            });
+
+            if (!isInsidePanel && !isInsideHotspot) {
+                this.closePanel();
+                return;
+            }
+
+            if (isInsidePanel && !isInsideDropdown && this.tagDropdown.isOpen()) {
+                this.tagDropdown.close();
+            }
         });
 
         // --- MOUSE MOVE LISTENER (AUTO CLOSE) ---
@@ -254,7 +254,13 @@ export class App extends Component {
     // --- HANDLE AUTO CLOSE ---
     private handleAutoClose(ev: MouseEvent) {
         if (!this.panel?.classList.contains('open')) return;
-        
+
+        // Check if auto-close is enabled in settings
+        if (!this.store.settings.autoCloseOnHover) {
+            this.clearAutoCloseTimer();
+            return;
+        }
+
         // Don't auto-close if we are editing or settings are open
         if (this.panel.classList.contains('mode-add') || this.panel.classList.contains('mode-settings') || this.panel.classList.contains('is-resizing')) {
             this.clearAutoCloseTimer();
@@ -262,7 +268,7 @@ export class App extends Component {
         }
 
         const rect = this.panel.getBoundingClientRect();
-        
+
         // Check if mouse is within the panel OR the buffer zone around it
         const isInBufferedZone = (
             ev.clientX >= rect.left - this.AUTO_CLOSE_BUFFER &&
@@ -325,10 +331,10 @@ export class App extends Component {
         this.host.style.setProperty('--hotspot-width', `${s.hotspotWidthPx || 24}px`);
         this.host.setAttribute('data-hotspot-position', s.hotspotPosition || 'edge');
         this.host.setAttribute('data-theme', s.theme || 'dark');
-        
+
         // Fix for panel font size inheriting
         if (this.panel) {
-             this.panel.style.fontSize = `${s.fontSizePx || 13}px`;
+            this.panel.style.fontSize = `${s.fontSizePx || 13}px`;
         }
     }
 }

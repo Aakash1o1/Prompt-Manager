@@ -3,6 +3,8 @@ import { createOrGetHost } from './host';
 import { renderUI } from './ui';
 import { getStorage, setStorage } from '../lib/storage';
 import { DEFAULT_PROMPTS, DEFAULT_TAGS } from '../lib/defaultPrompts';
+import { TextExpander } from './components/TextExpander'; 
+import { Store } from './store'; // --- ADDED IMPORT ---
 
 type Prompt = { id: string; title: string; text: string; quick?: string; tags?: string[] };
 type Tag = { id: string; name: string; color: string; order: number };
@@ -11,7 +13,7 @@ type Settings = {
   popupHeightVh: number;
   popupWidthPx: number;
   fontFamily: string;
-  fontSizePx: number; // +++ ADD THIS LINE
+  fontSizePx: number; 
   theme: 'light' | 'dark';
   hotspotPosition: 'corner' | 'edge';
   hotspotWidthPx: number;
@@ -25,7 +27,7 @@ const DEFAULT_SETTINGS: Settings = {
   popupHeightVh: 56,
   popupWidthPx: 340,
   fontFamily: 'Arial, Helvetica, sans-serif',
-  fontSizePx: 13, // +++ ADD THIS LINE (13px is a more readable default)
+  fontSizePx: 13,
   theme: 'dark',
   hotspotPosition: 'edge',
   hotspotWidthPx: 24
@@ -102,8 +104,23 @@ async function loadAndInit() {
   }
 
   const { host, shadow } = createOrGetHost();
+  if (!host || !shadow) return; 
+
+  // --- Initialize Store ---
+  // We initialize the store with the data we already loaded above
+  const store = new Store();
+  store.prompts = prompts;
+  store.tags = tags;
+  store.settings = settings;
+
   // render main UI
   await renderUI({ host, shadow, prompts, tags, settings, PROMPTS_KEY, SETTINGS_KEY, TAGS_KEY });
+
+  // --- NEW CODE: Initialize Text Expander ---
+  // The expander works globally on the page
+  const expander = new TextExpander(store);
+  expander.mount();
+  // ------------------------------------------
 }
 
 if (document.readyState === 'loading') {
