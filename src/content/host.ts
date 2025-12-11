@@ -2,38 +2,38 @@
 import { STYLES } from './styles';
 
 export function createOrGetHost() {
-    if ((window as any).__promptManagerInitialized) {
-        return { host: null, shadow: null }; // Already initialized
-    }
-    (window as any).__promptManagerInitialized = true;
+  if ((window as any).__promptManagerInitialized) {
+    return { host: null, shadow: null }; // Already initialized
+  }
+  (window as any).__promptManagerInitialized = true;
 
-    const HOST_ID = 'prompt-drawer-host-shadow';
-    let host = document.getElementById(HOST_ID) as HTMLElement | null;
-    if (host) host.remove(); // Clean up existing if any
+  const HOST_ID = 'prompt-drawer-host-shadow';
+  let host = document.getElementById(HOST_ID) as HTMLElement | null;
+  if (host) host.remove(); // Clean up existing if any
 
-    host = document.createElement('div');
-    host.id = HOST_ID;
+  host = document.createElement('div');
+  host.id = HOST_ID;
 
-    // Critical: Set these styles on the Host element so it sits on top 
-    // without affecting the page layout flow.
-    Object.assign(host.style, {
-        all: 'initial',
-        position: 'fixed',
-        top: '0',
-        left: '0',
-        width: '0',
-        height: '0',
-        zIndex: '2147483647', // Max z-index
-        pointerEvents: 'none' // Let clicks pass through the container (children will re-enable)
-    });
+  // Critical: Set these styles on the Host element so it sits on top 
+  // without affecting the page layout flow.
+  Object.assign(host.style, {
+    all: 'initial',
+    position: 'fixed',
+    top: '0',
+    left: '0',
+    width: '0',
+    height: '0',
+    zIndex: '2147483647', // Max z-index
+    pointerEvents: 'none' // Let clicks pass through the container (children will re-enable)
+  });
 
-    // Append to documentElement (<html>) to avoid Body scroll issues
-    document.documentElement.appendChild(host);
+  // Append to documentElement (<html>) to avoid Body scroll issues
+  document.documentElement.appendChild(host);
 
-    const shadow = host.attachShadow({ mode: 'open' }); // Was 'closed'
+  const shadow = host.attachShadow({ mode: 'open' }); // Was 'closed'
 
-    // FIXED: Removed the backslash before {STYLES}
-    shadow.innerHTML = `
+  // FIXED: Removed the backslash before {STYLES}
+  shadow.innerHTML = `
     <style>
       ${STYLES}
     </style>
@@ -110,5 +110,5 @@ export function createOrGetHost() {
     </div>
   `;
 
-    return { host, shadow };
+  return { host, shadow };
 }

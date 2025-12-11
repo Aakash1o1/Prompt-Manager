@@ -44,33 +44,45 @@ export class App extends Component {
     }
 
     mount(parent: HTMLElement) { // ShadowRoot is passed as parent usually
+        console.log('App: Mounting...'); // Debug 1
+
         this.panel = this.shadow.getElementById('panel');
         this.hotzone = this.shadow.getElementById('hotzone');
         this.toastEl = this.shadow.getElementById('toast'); // <--- CAPTURE TOAST ELEMENT
 
-        if (!this.panel || !this.hotzone) return;
+        if (!this.panel || !this.hotzone) {
+            console.error('App: Panel or Hotzone not found in Shadow DOM'); // Debug 2
+            return;
+        }
 
-        // Mount children
-        this.searchBar.mount(this.panel);
-        this.tagDropdown.mount(this.panel);
-        this.promptList.mount(this.panel);
-        this.promptEditor.mount(this.panel);
-        this.settingsModal.mount(this.panel);
+        try {
 
-        // Setup resize handles
-        setupResizeHandles({
-            panel: this.panel,
-            shadow: this.shadow,
-            host: this.host,
-            getSettings: () => this.store.settings,
-            saveSettings: (s) => this.store.updateSettings(s)
-        });
+            // Mount children
+            this.searchBar.mount(this.panel);
+            this.tagDropdown.mount(this.panel);
+            this.promptList.mount(this.panel);
+            this.promptEditor.mount(this.panel);
+            this.settingsModal.mount(this.panel);
 
-        this.setupEventListeners();
-        this.setupPanelBehavior();
-        this.applySettings();
+            // Setup resize handles
+            setupResizeHandles({
+                panel: this.panel,
+                shadow: this.shadow,
+                host: this.host,
+                getSettings: () => this.store.settings,
+                saveSettings: (s) => this.store.updateSettings(s)
+            });
 
-        this.store.subscribe('settings_updated', () => this.applySettings());
+            this.setupEventListeners();
+            this.setupPanelBehavior();
+            this.applySettings();
+
+            this.store.subscribe('settings_updated', () => this.applySettings());
+            console.log('App: Mounted successfully, listeners attached.'); // Debug 3
+
+        } catch (error) {
+            console.error('App: Error mounting components', error);
+        }
     }
 
     // --- Public Toggle Method for Alt+P ---

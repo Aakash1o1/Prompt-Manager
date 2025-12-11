@@ -31,33 +31,40 @@ export const STYLES = `
   --padding-input: 8px;
   
   /* Color Variables - Dark Theme (Default) */
-  --bg: linear-gradient(180deg, rgba(12,18,24,0.6), rgba(18,24,32,0.6));
-  --bg-b: rgba(24,32,40,0.55);
-  --bg-dropdown: rgb(35, 35, 35);
-  --bg-input: rgba(0,0,0,0.04);
-  --bg-button: transparent;
-  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg: #1A1A1A; /* Darker background for popup */
+  --bg-b: #252525; /* Slightly lighter for hover/secondary */
+  --bg-dropdown: #2A2A2A;
+  --bg-input: #2A2A2A;
+  --bg-input-solid: #2A2A2A;
+  --bg-button: rgba(255, 255, 255, 0.05);
+  --bg-hover: #252525;
+  --bg-selected: rgba(0, 123, 255, 0.1);
   --txt: #e6eef8;
   --txt-placeholder: rgba(230, 238, 248, 0.5);
-  --border: rgba(255,255,255,0.06);
-  --border-input: rgba(255,255,255,0.03);
-  --accent: #8fb7ff;
-  --hot: #9cc7ff;
-  --bg-input-solid: rgba(20, 28, 36, 1); /* Dark, 80% opaque */
+  --border: #303030;
+  --border-input: #404040;
+  --border-item: #303030;
+  --accent: #007bff; /* Electric blue */
+  --hot: #007bff;
+  --shadow-popup: 0px 4px 10px rgba(0, 0, 0, 0.4);
 
   
   /* Light Theme Colors */
-  --silver-bg: linear-gradient(180deg, rgba(243,244,246,0.75), rgba(230,233,236,0.68));
-  --silver-bg-b: rgba(240,242,245,0.64);
-  --silver-bg-dropdown: rgba(248,250,252,0.95);
-  --silver-bg-input: rgba(255,255,255,0.8);
-  --silver-bg-button: rgba(255,255,255,0.1);
-  --silver-bg-hover: rgba(0, 0, 0, 0.05);
+  --silver-bg: linear-gradient(180deg, #EAEAEA 0%, #E0E0E0 100%);
+  --silver-bg-b: #F8F8F8;
+  --silver-bg-dropdown: #F8F8F8;
+  --silver-bg-input: #DDDDDD;
+  --silver-bg-input-solid: #DDDDDD;
+  --silver-bg-button: rgba(0, 0, 0, 0.05);
+  --silver-bg-hover: #E0E0E0;
+  --silver-bg-selected: #E8F0F8;
   --silver-txt: #1f2937;
   --silver-txt-placeholder: rgba(31, 41, 55, 0.6);
-  --silver-border: rgba(0,0,0,0.1);
-  --silver-border-input: rgba(0,0,0,0.08);
-  --silver-bg-input-solid: rgba(255, 255, 255, 0.9); /* White, 90% opaque */
+  --silver-border: #B0B0B0;
+  --silver-border-input: #B0B0B0;
+  --silver-border-item: #D0D0D0;
+  --silver-shadow-popup: 0px 4px 10px rgba(0, 0, 0, 0.08);
+  --silver-accent: #007bff;
 
 }
 .controls { display: flex; gap: 6px; align-items: center; }
@@ -87,15 +94,17 @@ export const STYLES = `
   --bg-b: var(--silver-bg-b);
   --bg-dropdown: var(--silver-bg-dropdown);
   --bg-input: var(--silver-bg-input);
+  --bg-input-solid: var(--silver-bg-input-solid);
   --bg-button: var(--silver-bg-button);
   --bg-hover: var(--silver-bg-hover);
+  --bg-selected: var(--silver-bg-selected);
   --txt: var(--silver-txt);
   --txt-placeholder: var(--silver-txt-placeholder);
   --border: var(--silver-border);
   --border-input: var(--silver-border-input);
-  
-  /* +++ CHANGE 1: Apply the solid background for the light theme +++ */
-  --bg-input-solid: var(--silver-bg-input-solid);
+  --border-item: var(--silver-border-item);
+  --shadow-popup: var(--silver-shadow-popup);
+  --accent: var(--silver-accent);
 }
 
 /* Enforce font variables throughout shadow root */
@@ -160,25 +169,26 @@ input, textarea, button, select { font-family: var(--font-family) !important; fo
   z-index: 1000001;
   border-radius: var(--border-radius);
   overflow: hidden;
-  display: flex;
+  display: none; /* Hidden by default */
   flex-direction: column;
   color: var(--txt);
   background: var(--bg);
   border: 1px solid var(--border);
   padding: var(--padding);
   box-sizing: border-box;
+  box-shadow: var(--shadow-popup);
   backdrop-filter: blur(5px) saturate(200%);
-  opacity: 0;
-  transform: translateY(10px);
-  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
-  pointer-events: none;
+  pointer-events: auto; /* Always auto when visible */
 }
 .panel.open {
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
+  display: flex; /* Visible when open */
+  animation: slideUp 0.2s ease-out;
 }
 
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 /* ----------------------
    Header: contains (search) + small controls
 */
@@ -196,7 +206,6 @@ input, textarea, button, select { font-family: var(--font-family) !important; fo
   padding: var(--padding-small) var(--padding);
   border-radius: var(--border-radius-small);
   border: 1px solid var(--border-input);
-  /* +++ CHANGE 2: Use the solid background variable +++ */
   background: var(--bg-input-solid);
   color: var(--txt);
 }
@@ -207,8 +216,8 @@ input, textarea, button, select { font-family: var(--font-family) !important; fo
 /* Hide Search and List when in Add/Edit or Settings mode */
 .panel.mode-add .search,
 .panel.mode-settings .search,
-.panel.mode-add .list,      /* <--- ADDED THIS */
-.panel.mode-settings .list  /* <--- ADDED THIS */
+.panel.mode-add .list,
+.panel.mode-settings .list
 {
   visibility: hidden !important;
   opacity: 0 !important;
@@ -218,16 +227,6 @@ input, textarea, button, select { font-family: var(--font-family) !important; fo
 
 
 .controls { display: flex; gap: var(--gap-small); align-items: center; }
-.ctrl-btn {
-  background: var(--bg-button);
-  border: 1px solid var(--border);
-  border-radius: var(--border-radius-small);
-  padding: var(--padding-small);
-  font-size: var(--font-size);
-  color: var(--txt);
-  cursor: pointer;
-}
-
 .ctrl-btn.active {
   background: linear-gradient(180deg, rgba(143,183,255,0.14), rgba(143,183,255,0.06));
   box-shadow: 0 4px 14px rgba(143,183,255,0.06);
@@ -390,7 +389,6 @@ input[type="text"], textarea {
   padding: var(--padding-input); 
   border-radius: var(--border-radius-small); 
   border: 1px solid var(--border-input); 
-  /* +++ CHANGE 3: Use the solid background variable +++ */
   background: var(--bg-input-solid);
   color: var(--txt); 
   font-size: var(--font-size); 
@@ -404,19 +402,15 @@ textarea { min-height: 96px; resize: vertical; }
   display:flex; 
   gap:8px; 
   align-items:center; 
-  /* justify-content has been removed */
 }
 .settings-row label { 
-  /* width: 60%; has been removed */
   color: var(--txt); 
   font-size: calc(var(--font-size) * 1); 
 }
 
-
-/* Add this new rule */
 .settings-row > label:not(.toggle-switch) {
   flex-grow: 1;
-  white-space: nowrap; /* Prevents the label from wrapping if the window is narrow */
+  white-space: nowrap; 
 }
 
 /* Toggle Switch Styles */
@@ -425,8 +419,8 @@ textarea { min-height: 96px; resize: vertical; }
   display: inline-block;
   width: 44px;
   height: 24px;
-  margin-left: auto; /*  <-- This pushes the element to the right */
-  flex-shrink: 0;     /*  <-- This prevents it from shrinking if space is tight */
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .toggle-switch input {
@@ -522,6 +516,16 @@ select {
   min-width: 15vw;
   overflow: hidden;
 }
+
+:host([data-hotspot-position="edge"]) .panel.open {
+  animation: slideLeftEdge 0.2s ease-out;
+}
+
+@keyframes slideLeftEdge {
+  from { opacity: 0; transform: translate(10px, -50%); }
+  to { opacity: 1; transform: translate(0, -50%); }
+}
+
 .list {
   flex: 1 1 auto;
   overflow-y: auto;
@@ -545,7 +549,9 @@ select {
   justify-content: space-between;
   gap: var(--gap);
   border-radius: var(--padding);
-  background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(0,0,0,0.03));
+  background: var(--bg-button); /* Use bg-button or transparent, items have specific bg in theme doc? Doc says #1A1A1A for dark, #F8F8F8 for light. Let's use a new variable or bg-b? Doc says "Prompt List Items... Background: #F8F8F8". Let's use --bg-b which we set to #252525 (dark) and #F8F8F8 (light) */
+  background-color: var(--bg-b); /* Updated to use theme variable */
+  border-bottom: 1px solid var(--border-item); /* Added border separation */
   min-height: var(--hotspot-size);
   transition: background 120ms ease, transform 160ms ease, opacity 120ms ease;
   cursor: default; 

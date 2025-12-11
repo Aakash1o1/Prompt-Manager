@@ -23,7 +23,7 @@ export async function renderUI(opts: {
   TAGS_KEY: string;
 }) {
   const { host, shadow, prompts, tags, settings } = opts;
-  
+
   // Guard against null host (if createOrGetHost returned null)
   if (!host || !shadow) return;
 
@@ -39,22 +39,26 @@ export async function renderUI(opts: {
 
   // --- RESTORED MESSAGE LISTENER ---
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    console.log("Prompt Drawer: Message received", msg); // <--- DEBUG LOG
+
     if (msg.type === 'TOGGLE_POPUP') {
+      console.log("Prompt Drawer: Toggling..."); // <--- DEBUG LOG
+
       app.toggle();
       sendResponse({ ok: true });
     }
-    
+
     if (msg.type === 'PERMISSION_REMOVED' && msg.pattern) {
-       // Check if current URL matches the removed pattern
-       const currentUrl = window.location.href;
-       // Simple check: if pattern is "https://example.com/*", remove "/*" and check startsWith
-       const origin = msg.pattern.replace(/\/\*$/, '');
-       if (currentUrl.startsWith(origin)) {
-           app.destroy();
-       }
+      // Check if current URL matches the removed pattern
+      const currentUrl = window.location.href;
+      // Simple check: if pattern is "https://example.com/*", remove "/*" and check startsWith
+      const origin = msg.pattern.replace(/\/\*$/, '');
+      if (currentUrl.startsWith(origin)) {
+        app.destroy();
+      }
     }
     // Return true for async response if needed (not strictly needed here but good practice)
-    return true; 
+    return true;
   });
 
   console.log('Prompt Manager UI initialized');
