@@ -47,7 +47,8 @@ export function createOrGetHost() {
       <div class="header">
         <div class="search"><input id="search-input" type="text" placeholder="Search (title, quick, body)..." /></div>
         <div class="controls">
-          <button id="add-btn" class="ctrl-btn" title="Add">＋</button>
+          <button id="add-btn" class="ctrl-btn" title="Add Prompt">＋</button>
+          <button id="new-folder-btn" class="ctrl-btn" title="New Folder">📁+</button>
           <button id="tags-btn" class="ctrl-btn" title="Tags">T</button>
           <button id="settings-btn" class="ctrl-btn" title="Settings">⚙</button>
           <button id="close-btn" class="ctrl-btn" title="Close"></button>
@@ -69,6 +70,12 @@ export function createOrGetHost() {
 
       <div class="add-area" id="add-area" aria-hidden="true">
         <input id="input-title" type="text" placeholder="Prompt title" />
+        
+        <!-- NEW: Location Selector -->
+        <select id="input-folder" style="width: 100%; margin-top: 6px; background: var(--bg-input); color: var(--txt); border: 1px solid var(--border); padding: 6px; border-radius: 4px;">
+          <option value="">(Root)</option>
+        </select>
+
         <input id="input-quick" type="text" placeholder="Quick search code (optional)" />
         <textarea id="input-body" placeholder="Full prompt text" style="height: 177px;"></textarea>
         <div style="display:flex;gap:var(--gap);justify-content:flex-end;margin-top:var(--gap)">

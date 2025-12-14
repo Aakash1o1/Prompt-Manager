@@ -3,8 +3,8 @@ import { createOrGetHost } from './host';
 import { renderUI } from './ui';
 import { getStorage, setStorage } from '../lib/storage';
 import { DEFAULT_PROMPTS, DEFAULT_TAGS } from '../lib/defaultPrompts';
-import { TextExpander } from './components/TextExpander'; 
-import { Store } from './store'; // --- ADDED IMPORT ---
+import { TextExpander } from './components/TextExpander';
+import { Store } from './store';
 
 type Prompt = { id: string; title: string; text: string; quick?: string; tags?: string[] };
 type Tag = { id: string; name: string; color: string; order: number };
@@ -13,15 +13,18 @@ type Settings = {
   popupHeightVh: number;
   popupWidthPx: number;
   fontFamily: string;
-  fontSizePx: number; 
+  fontSizePx: number;
   theme: 'light' | 'dark';
   hotspotPosition: 'corner' | 'edge';
   hotspotWidthPx: number;
+  autoCloseOnHover: boolean;
 };
 
+// Constants
 const PROMPTS_KEY = 'promptManager.prompts';
 const SETTINGS_KEY = 'promptManager.settings';
 const TAGS_KEY = 'promptManager.tags';
+const FOLDERS_KEY = 'promptManager.folders';
 
 const DEFAULT_SETTINGS: Settings = {
   popupHeightVh: 56,
@@ -30,23 +33,28 @@ const DEFAULT_SETTINGS: Settings = {
   fontSizePx: 13,
   theme: 'dark',
   hotspotPosition: 'edge',
-  hotspotWidthPx: 24
+  hotspotWidthPx: 24,
+  autoCloseOnHover: false
 };
 
 function uid() { return (crypto as any).randomUUID?.() ?? Math.random().toString(36).slice(2, 9); }
 
 async function loadAndInit() {
+  // 1. Define variables once
   let prompts: Prompt[] = [];
   let settings: Settings = DEFAULT_SETTINGS;
   let tags: Tag[] = [];
+  let folders: any[] = [];
   let isFirstInstall = false;
 
+  // 2. Load Data
   try {
     const p = await getStorage<Prompt[]>(PROMPTS_KEY);
     prompts = Array.isArray(p) ? p : [];
   } catch (e) {
     prompts = [];
   }
+
   try {
     const s = await getStorage<Settings>(SETTINGS_KEY);
     settings = s ? s : DEFAULT_SETTINGS;
@@ -61,10 +69,17 @@ async function loadAndInit() {
     tags = [];
   }
 
-  // Check if this is first install (no prompts and no tags)
+  try {
+    const f = await getStorage<any[]>(FOLDERS_KEY);
+    folders = Array.isArray(f) ? f : [];
+  } catch (e) {
+    folders = [];
+  }
+
+  // 3. First Install Logic
   if (prompts.length === 0 && tags.length === 0) {
     isFirstInstall = true;
-    
+
     // Create default tags
     tags = DEFAULT_TAGS.map((dt, index) => ({
       id: uid(),
@@ -72,8 +87,8 @@ async function loadAndInit() {
       color: dt.color,
       order: index
     }));
-    
-    // Create default prompts with tag references
+
+    // Create default prompts
     prompts = DEFAULT_PROMPTS.map(dp => {
       const promptTags: string[] = [];
       if (dp.tags) {
@@ -87,16 +102,18 @@ async function loadAndInit() {
         title: dp.title,
         text: dp.text,
         quick: dp.quick,
-        tags: promptTags
+        tags: promptTags,
+        parentId: null
       };
     });
-    
+
     // Save default data
     try {
       await Promise.all([
         setStorage({ [PROMPTS_KEY]: prompts }),
         setStorage({ [TAGS_KEY]: tags }),
-        setStorage({ [SETTINGS_KEY]: settings })
+        setStorage({ [SETTINGS_KEY]: settings }),
+        setStorage({ [FOLDERS_KEY]: [] }) // Ensure folders key exists
       ]);
     } catch (e) {
       console.warn('Failed to save default prompts/tags:', e);
@@ -104,25 +121,35 @@ async function loadAndInit() {
   }
 
   const { host, shadow } = createOrGetHost();
-  if (!host || !shadow) return; 
+  if (!host || !shadow) return;
 
-  // --- Initialize Store ---
-  // We initialize the store with the data we already loaded above
+  // 4. Initialize Text Expander (Global)
+  // We initialize a temporary store for the expander to work immediately
   const store = new Store();
   store.prompts = prompts;
   store.tags = tags;
   store.settings = settings;
+  store.folders = folders;
 
-  // render main UI
-  await renderUI({ host, shadow, prompts, tags, settings, PROMPTS_KEY, SETTINGS_KEY, TAGS_KEY });
-
-  // --- NEW CODE: Initialize Text Expander ---
-  // The expander works globally on the page
   const expander = new TextExpander(store);
   expander.mount();
-  // ------------------------------------------
+
+  // 5. Render UI
+  await renderUI({
+    host,
+    shadow,
+    prompts,
+    tags,
+    settings,
+    folders,
+    PROMPTS_KEY,
+    SETTINGS_KEY,
+    TAGS_KEY,
+    FOLDERS_KEY
+  });
 }
 
+// 6. Boot Logic
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => loadAndInit().catch(console.error), { once: true });
 } else {

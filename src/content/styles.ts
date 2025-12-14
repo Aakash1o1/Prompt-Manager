@@ -695,6 +695,83 @@ select {
 
 
 
+
+/* --- Folder Styles --- */
+.folder-row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: var(--padding-small);
+  border-radius: var(--border-radius-small);
+  background: rgba(255, 255, 255, 0.03); /* Slightly distinct from prompts */
+  border: 1px solid transparent;
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 2px;
+  font-weight: 500;
+  color: var(--txt);
+}
+
+/* Container for folder icons on the right */
+.folder-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0; /* Hidden by default */
+  transition: opacity 0.2s ease;
+}
+
+/* Show actions on hover */
+.folder-row:hover .folder-actions {
+  opacity: 1;
+}
+
+/* Tiny action buttons */
+.folder-action-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.folder-action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--txt);
+}
+
+.folder-action-btn.delete:hover {
+  color: #ff6b6b; /* Red hover for delete */
+}
+
+.folder-row:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+.folder-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+}
+
+.folder-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Chevron rotation for Step 3 (adding now for prep) */
+.folder-row.expanded .folder-icon.chevron {
+  transform: rotate(90deg);
+}
 `;
 
 

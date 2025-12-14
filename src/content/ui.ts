@@ -10,6 +10,7 @@ type Settings = {
   theme: 'light' | 'dark';
   hotspotPosition: 'corner' | 'edge';
   hotspotWidthPx: number;
+  autoCloseOnHover: boolean;
 };
 
 export async function renderUI(opts: {
@@ -17,34 +18,36 @@ export async function renderUI(opts: {
   shadow: ShadowRoot;
   prompts: any[];
   tags: any[];
+  folders: any[];
   settings: Settings;
   PROMPTS_KEY: string;
   SETTINGS_KEY: string;
   TAGS_KEY: string;
+  FOLDERS_KEY: string;
 }) {
-  const { host, shadow, prompts, tags, settings } = opts;
+  const { host, shadow, prompts, tags, folders, settings } = opts;
 
   // Guard against null host (if createOrGetHost returned null)
   if (!host || !shadow) return;
 
   // Initialize Store
   const store = new Store();
-  (window as any).debugStore = store;
+  (window as any).debugStore = store; // Expose for debugging
+
   store.prompts = prompts;
   store.tags = tags;
+  store.folders = folders || [];
   store.settings = settings;
 
   // Initialize App
   const app = new App(store, shadow, host);
   app.mount(shadow as any);
 
-  // --- RESTORED MESSAGE LISTENER ---
+  // --- MESSAGE LISTENER ---
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    console.log("Prompt Drawer: Message received", msg); // <--- DEBUG LOG
+    // console.log("Prompt Drawer: Message received", msg); 
 
     if (msg.type === 'TOGGLE_POPUP') {
-      console.log("Prompt Drawer: Toggling..."); // <--- DEBUG LOG
-
       app.toggle();
       sendResponse({ ok: true });
     }
@@ -52,13 +55,11 @@ export async function renderUI(opts: {
     if (msg.type === 'PERMISSION_REMOVED' && msg.pattern) {
       // Check if current URL matches the removed pattern
       const currentUrl = window.location.href;
-      // Simple check: if pattern is "https://example.com/*", remove "/*" and check startsWith
       const origin = msg.pattern.replace(/\/\*$/, '');
       if (currentUrl.startsWith(origin)) {
         app.destroy();
       }
     }
-    // Return true for async response if needed (not strictly needed here but good practice)
     return true;
   });
 

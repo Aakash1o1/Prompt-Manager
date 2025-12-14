@@ -101,19 +101,19 @@ export class Store {
 
             // Update local state if external storage changed
             if (changes[PROMPTS_KEY]) {
-                this.prompts = changes[PROMPTS_KEY].newValue || [];
+                this.prompts = (changes[PROMPTS_KEY].newValue as Prompt[]) || [];
                 this.notify('prompts_updated');
             }
             if (changes[TAGS_KEY]) {
-                this.tags = changes[TAGS_KEY].newValue || [];
+                this.tags = (changes[TAGS_KEY].newValue as Tag[]) || [];
                 this.notify('tags_updated');
             }
             if (changes[SETTINGS_KEY]) {
-                this.settings = changes[SETTINGS_KEY].newValue || DEFAULT_SETTINGS;
+                this.settings = (changes[SETTINGS_KEY].newValue as Settings) || DEFAULT_SETTINGS;
                 this.notify('settings_updated');
             }
             if (changes[FOLDERS_KEY]) {
-                this.folders = changes[FOLDERS_KEY].newValue || [];
+                this.folders = (changes[FOLDERS_KEY].newValue as Folder[]) || [];
                 this.notify('folders_updated');
             }
         });
@@ -123,6 +123,20 @@ export class Store {
         try {
             const p = await getStorage<Prompt[]>(PROMPTS_KEY);
             this.prompts = Array.isArray(p) ? p : [];
+
+            // Ensure every prompt has a valid parentId (null if missing)
+            let needsSave = false;
+            this.prompts.forEach(prompt => {
+                if (prompt.parentId === undefined) {
+                    prompt.parentId = null;
+                    needsSave = true;
+                }
+            });
+            // If we found old data, save the cleaned version immediately
+            if (needsSave) {
+                await this.savePrompts();
+            }
+            // --------------------------------------
 
             // NEW: Load Folders
             const f = await getStorage<Folder[]>(FOLDERS_KEY);
@@ -380,6 +394,18 @@ export class Store {
 
         await Promise.all([this.saveTags(), this.savePrompts()]);
         this.notify('filter_updated');
+    }
+
+    // --- UI Helper Methods ---
+
+    toggleFolderExpansion(folderId: string) {
+        const folder = this.folders.find(f => f.id === folderId);
+        if (folder) {
+            folder.isExpanded = !folder.isExpanded;
+            this.notify('folders_updated');
+            // Optional: If you want to persist open/closed state across reloads,
+            // call this.saveFolders() here. For now, in-memory is faster.
+        }
     }
 
     // --- Tag Reordering Logic ---

@@ -7,20 +7,21 @@ export class PromptEditor extends Component {
     private inputBody: HTMLTextAreaElement | null = null;
     private saveBtn: HTMLButtonElement | null = null;
     private cancelBtn: HTMLButtonElement | null = null;
-    
+    private inputFolder: HTMLSelectElement | null = null;
+
     public isOpen(): boolean {
         return this.area ? this.area.classList.contains('open') : false;
     }
 
     // --- NEW PROPERTY ---
-    private deleteBtn: HTMLButtonElement | null = null; 
+    private deleteBtn: HTMLButtonElement | null = null;
     // --------------------
 
     private editingId: string | null = null;
-    
+
     // Public property so App can read it
-    public draftTagIds: string[] = []; 
-    
+    public draftTagIds: string[] = [];
+
     // Callback for when tags change internally
     public onTagsChanged: (() => void) | null = null;
 
@@ -31,6 +32,7 @@ export class PromptEditor extends Component {
         this.inputBody = parent.querySelector('#input-body');
         this.saveBtn = parent.querySelector('#save-btn');
         this.cancelBtn = parent.querySelector('#cancel-btn');
+        this.inputFolder = parent.querySelector('#input-folder');
 
         if (this.saveBtn) {
             this.saveBtn.addEventListener('click', () => this.save());
@@ -50,6 +52,43 @@ export class PromptEditor extends Component {
         }
         // Notify if anyone is listening
         if (this.onTagsChanged) this.onTagsChanged();
+        if (this.onTagsChanged) this.onTagsChanged();
+    }
+
+    private renderFolderOptions(selectedId: string | null) {
+        if (!this.inputFolder) return;
+
+        this.inputFolder.innerHTML = '';
+
+        // Option 1: Root
+        const rootOpt = document.createElement('option');
+        rootOpt.value = ""; // Empty string = Root (null)
+        rootOpt.textContent = "📁 (Root)";
+        this.inputFolder.appendChild(rootOpt);
+
+        // Recursive helper to render tree options
+        const renderLevel = (parentId: string | null, depth: number) => {
+            const children = this.store.folders
+                .filter(f => f.parentId == parentId)
+                .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+            children.forEach(folder => {
+                const opt = document.createElement('option');
+                opt.value = folder.id;
+                // Add visual indentation using non-breaking spaces or dashes
+                const prefix = depth > 0 ? "— ".repeat(depth) : "";
+                opt.textContent = `${prefix}📁 ${folder.name}`;
+                this.inputFolder!.appendChild(opt);
+
+                // Recurse
+                renderLevel(folder.id, depth + 1);
+            });
+        };
+
+        renderLevel(null, 0);
+
+        // Set selected value
+        this.inputFolder.value = selectedId || "";
     }
 
     open(promptId?: string) {
@@ -66,20 +105,23 @@ export class PromptEditor extends Component {
                 if (this.inputTitle) this.inputTitle.value = p.title;
                 if (this.inputQuick) this.inputQuick.value = p.quick || '';
                 if (this.inputBody) this.inputBody.value = p.text;
+                if (this.inputBody) this.inputBody.value = p.text;
                 this.draftTagIds = [...(p.tags || [])];
+                this.renderFolderOptions(p.parentId || null);
             }
             // --- RENDER DELETE BUTTON (EDIT MODE) ---
-            this.renderDeleteButton(); 
+            this.renderDeleteButton();
             // ---------------------------------------
         } else {
             this.editingId = null;
             this.resetInputs();
             this.draftTagIds = [];
+            this.renderFolderOptions(null);
             // --- REMOVE DELETE BUTTON (NEW MODE) ---
             this.removeDeleteButton();
             // ---------------------------------------
         }
-        
+
         // Trigger callback to sync dropdown if open
         if (this.onTagsChanged) this.onTagsChanged();
     }
@@ -90,9 +132,9 @@ export class PromptEditor extends Component {
         this.area.setAttribute('aria-hidden', 'true');
         this.shadow.getElementById('panel')?.classList.remove('mode-add');
         this.resetInputs();
-        
+
         // --- CLEAN UP DELETE BUTTON ---
-        this.removeDeleteButton(); 
+        this.removeDeleteButton();
         // ------------------------------
 
         // Emit event so App knows to reset Dropdown
@@ -113,7 +155,7 @@ export class PromptEditor extends Component {
         this.deleteBtn.addEventListener('click', async (ev) => {
             ev.stopPropagation();
             if (!this.editingId) return;
-            
+
             if (confirm('Delete this prompt?')) {
                 await this.store.deletePrompt(this.editingId);
                 this.close();
@@ -135,30 +177,32 @@ export class PromptEditor extends Component {
         if (this.inputTitle) this.inputTitle.value = '';
         if (this.inputQuick) this.inputQuick.value = '';
         if (this.inputBody) this.inputBody.value = '';
+        if (this.inputFolder) this.inputFolder.value = '';
     }
 
     private async save() {
         const title = this.inputTitle?.value.trim();
         const text = this.inputBody?.value;
         const quick = this.inputQuick?.value.trim() || '';
+        const folderId = this.inputFolder?.value || null;
 
         if (!title || !text) {
             // REPLACED ALERT WITH TOAST EVENT
-            this.shadow.dispatchEvent(new CustomEvent('show-toast', { 
-                detail: { message: 'Title and Body are required' } 
+            this.shadow.dispatchEvent(new CustomEvent('show-toast', {
+                detail: { message: 'Title and Body are required' }
             }));
             return;
         }
 
         if (this.editingId) {
-            await this.store.updatePrompt(this.editingId, { title, text, quick, tags: this.draftTagIds });
+            await this.store.updatePrompt(this.editingId, { title, text, quick, tags: this.draftTagIds, parentId: folderId });
         } else {
-            await this.store.addPrompt(title, text, quick, this.draftTagIds);
+            await this.store.addPrompt(title, text, quick, this.draftTagIds, folderId);
         }
 
         // OPTIONAL SUCCESS MESSAGE
-        this.shadow.dispatchEvent(new CustomEvent('show-toast', { 
-            detail: { message: 'Saved' } 
+        this.shadow.dispatchEvent(new CustomEvent('show-toast', {
+            detail: { message: 'Saved' }
         }));
 
         this.close();

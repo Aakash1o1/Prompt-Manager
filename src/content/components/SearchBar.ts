@@ -6,6 +6,7 @@ export class SearchBar extends Component {
     private tagsBtn: HTMLButtonElement | null = null;
     private settingsBtn: HTMLButtonElement | null = null;
     private closeBtn: HTMLButtonElement | null = null;
+    private newFolderBtn: HTMLButtonElement | null = null;
 
     mount(parent: HTMLElement) {
         this.input = parent.querySelector('#search-input');
@@ -13,13 +14,14 @@ export class SearchBar extends Component {
         this.tagsBtn = parent.querySelector('#tags-btn');
         this.settingsBtn = parent.querySelector('#settings-btn');
         this.closeBtn = parent.querySelector('#close-btn');
+        this.newFolderBtn = parent.querySelector('#new-folder-btn');
 
         if (this.input) {
             // --- UPDATED INPUT LISTENER ---
             this.input.addEventListener('input', () => {
                 this.store.setFilter(this.input!.value);
                 // Reset to top result on new search so selection doesn't get lost
-                this.shadow.dispatchEvent(new CustomEvent('nav-reset')); 
+                this.shadow.dispatchEvent(new CustomEvent('nav-reset'));
             });
 
             // --- ADDED KEYDOWN LISTENER ---
@@ -66,6 +68,15 @@ export class SearchBar extends Component {
         if (this.closeBtn) {
             this.closeBtn.addEventListener('click', () => {
                 this.shadow.dispatchEvent(new CustomEvent('close-panel'));
+            });
+        }
+
+        if (this.newFolderBtn) {
+            this.newFolderBtn.addEventListener('click', async () => {
+                const name = prompt("Enter folder name:");
+                if (name && name.trim()) {
+                    await this.store.addFolder(name.trim(), null); // Null = Root
+                }
             });
         }
 
