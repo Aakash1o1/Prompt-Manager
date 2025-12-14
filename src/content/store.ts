@@ -9,6 +9,15 @@ export type Prompt = {
     text: string;
     quick?: string;
     tags?: string[];
+    parentId?: string | null; // NEW: ID of parent folder, or null for root
+};
+
+export type Folder = {
+    id: string;
+    name: string;
+    parentId: string | null;
+    order: number;       // For sorting folders amongst themselves
+    isExpanded?: boolean; // Runtime only state for UI accordion
 };
 
 export type Tag = {
@@ -31,6 +40,7 @@ export type Settings = {
 
 // --- Constants ---
 const PROMPTS_KEY = 'promptManager.prompts';
+const FOLDERS_KEY = 'promptManager.folders';
 const SETTINGS_KEY = 'promptManager.settings';
 const TAGS_KEY = 'promptManager.tags';
 
@@ -58,6 +68,7 @@ export class Store {
     // State
     prompts: Prompt[] = [];
     tags: Tag[] = [];
+    folders: Folder[] = []; // NEW: Initialize empty folder array
     settings: Settings = DEFAULT_SETTINGS;
 
     // UI State (transient)
@@ -101,6 +112,10 @@ export class Store {
                 this.settings = changes[SETTINGS_KEY].newValue || DEFAULT_SETTINGS;
                 this.notify('settings_updated');
             }
+            if (changes[FOLDERS_KEY]) {
+                this.folders = changes[FOLDERS_KEY].newValue || [];
+                this.notify('folders_updated');
+            }
         });
     }
 
@@ -108,6 +123,10 @@ export class Store {
         try {
             const p = await getStorage<Prompt[]>(PROMPTS_KEY);
             this.prompts = Array.isArray(p) ? p : [];
+
+            // NEW: Load Folders
+            const f = await getStorage<Folder[]>(FOLDERS_KEY);
+            this.folders = Array.isArray(f) ? f : [];
 
             const s = await getStorage<Settings>(SETTINGS_KEY);
             this.settings = s ? s : DEFAULT_SETTINGS;
@@ -122,6 +141,7 @@ export class Store {
             this.notify('loaded');
             this.notify('prompts_updated');
             this.notify('tags_updated');
+            this.notify('folders_updated'); // NEW notification
             this.notify('settings_updated');
         } catch (e) {
             console.error('Store: Failed to load data', e);
@@ -155,10 +175,14 @@ export class Store {
             };
         });
 
+        // NEW: Ensure default prompts have null parentId
+        this.prompts.forEach(p => p.parentId = null);
+
         await Promise.all([
             this.savePrompts(),
             this.saveTags(),
-            this.saveSettings()
+            this.saveSettings(),
+            this.saveFolders() // NEW: Save empty folder list
         ]);
     }
 
@@ -191,15 +215,79 @@ export class Store {
         }
     }
 
+    // --- Folder Persistence ---
+    async saveFolders() {
+        try {
+            await setStorage({ [FOLDERS_KEY]: this.folders });
+            this.notify('folders_updated');
+        } catch (e) {
+            console.warn('Store: Failed saving folders', e);
+        }
+    }
+
+    // --- Folder Operations ---
+
+    async addFolder(name: string, parentId: string | null = null) {
+        const newFolder: Folder = {
+            id: uid(), // Uses existing uid() helper
+            name,
+            parentId,
+            order: this.folders.length,
+            isExpanded: true
+        };
+        this.folders.push(newFolder);
+        await this.saveFolders();
+    }
+
+    async updateFolder(id: string, updates: Partial<Folder>) {
+        const idx = this.folders.findIndex(f => f.id === id);
+        if (idx === -1) return;
+        this.folders[idx] = { ...this.folders[idx], ...updates };
+        await this.saveFolders();
+    }
+
+    /**
+     * Deletes a folder.
+     * LOGIC: Prompts and Subfolders inside it are NOT deleted.
+     * They are moved to the parent of the deleted folder.
+     */
+    async deleteFolder(folderId: string) {
+        const folderToDelete = this.folders.find(f => f.id === folderId);
+        if (!folderToDelete) return;
+
+        const newParentId = folderToDelete.parentId; // Move items here
+
+        // 1. Move subfolders up
+        this.folders.forEach(f => {
+            if (f.parentId === folderId) {
+                f.parentId = newParentId;
+            }
+        });
+
+        // 2. Move prompts up
+        this.prompts.forEach(p => {
+            if (p.parentId === folderId) {
+                p.parentId = newParentId;
+            }
+        });
+
+        // 3. Remove the folder
+        this.folders = this.folders.filter(f => f.id !== folderId);
+
+        // Save everything
+        await Promise.all([this.saveFolders(), this.savePrompts()]);
+    }
+
     // --- Prompt Management ---
 
-    async addPrompt(title: string, text: string, quick: string, tagIds: string[]) {
+    async addPrompt(title: string, text: string, quick: string, tagIds: string[], parentId: string | null = null) {
         const newPrompt: Prompt = {
             id: uid(),
             title,
             text,
             quick,
-            tags: tagIds
+            tags: tagIds,
+            parentId: parentId // Set parent
         };
         this.prompts.push(newPrompt);
         await this.savePrompts();

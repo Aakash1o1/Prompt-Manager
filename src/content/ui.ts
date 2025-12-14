@@ -29,6 +29,7 @@ export async function renderUI(opts: {
 
   // Initialize Store
   const store = new Store();
+  (window as any).debugStore = store;
   store.prompts = prompts;
   store.tags = tags;
   store.settings = settings;
