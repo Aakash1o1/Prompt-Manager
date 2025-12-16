@@ -44,13 +44,15 @@ export function getVisibleIds(
         }
     });
 
-    // 2. Check Folders (If folder name matches, show it)
+    // 2. Check Folders (REMOVED: Folders are only shown if they contain matching prompts)
+    /*
     folders.forEach(f => {
         if (f.name.toLowerCase().includes(query)) {
             visibleIds.add(f.id);
             addWithAncestors(f.parentId);
         }
     });
+    */
 
     return visibleIds;
 }
