@@ -52,6 +52,11 @@ export async function renderUI(opts: {
       sendResponse({ ok: true });
     }
 
+    if (msg.type === 'OPEN_WITH_TEXT') {
+      app.openWithText(msg.text || '');
+      sendResponse({ ok: true });
+    }
+
     if (msg.type === 'PERMISSION_REMOVED' && msg.pattern) {
       // Check if current URL matches the removed pattern
       const currentUrl = window.location.href;

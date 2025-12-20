@@ -94,6 +94,16 @@ export class App extends Component {
         }
     }
 
+    // --- Public method to open with prefilled text ---
+    public openWithText(text: string) {
+        // Open panel if not already open
+        if (!this.panel?.classList.contains('open')) {
+            this.openPanel(true);
+        }
+        // Open editor with prefilled text
+        this.promptEditor.open(undefined, undefined, undefined, text);
+    }
+
     // --- Public destroy method for Permission Removal ---
     public destroy() {
         this.host.remove();

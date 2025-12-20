@@ -7,7 +7,8 @@
     "storage",
     "scripting",
     "activeTab",
-    "commands"
+    "commands",
+    "contextMenus"
   ],
   "optional_host_permissions": [
     "http://*/*",
@@ -20,13 +21,15 @@
     "page": "dist/options.html",
     "open_in_tab": true
   },
-"commands": {
+  "commands": {
     "open-prompt-drawer": {
-      "suggested_key": { "default": "Alt+P" },
+      "suggested_key": {
+        "default": "Alt+P"
+      },
       "description": "Toggle the Prompt Drawer UI"
     }
   },
-"action": {
+  "action": {
     "default_title": "Prompt Drawer",
     "default_popup": "dist/action.html"
   }

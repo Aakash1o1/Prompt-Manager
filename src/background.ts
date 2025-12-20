@@ -193,7 +193,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   // This is the most reliable check.
   chrome.permissions.contains({ origins: [tabUrl] }, (hasPermission) => {
     if (hasPermission) {
-      injectIntoTab(tabId).catch(() => {}); // Fails silently if not possible
+      injectIntoTab(tabId).catch(() => { }); // Fails silently if not possible
     }
   });
 });
@@ -211,6 +211,57 @@ chrome.runtime.onInstalled.addListener(() => {
       }
     }
   });
+
+  // Create context menu item for saving selected text to prompt
+  chrome.contextMenus.create({
+    id: 'save-prompt',
+    title: 'Save to Prompt Drawer',
+    contexts: ['selection']
+  });
+});
+
+// Handle context menu clicks
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'save-prompt' && tab?.id) {
+    // Instead of using info.selectionText (which may lose formatting),
+    // execute a script in the page to get the actual selection
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => {
+        const selection = window.getSelection();
+        return selection ? selection.toString() : '';
+      }
+    }).then((results) => {
+      const selectedText = results && results[0] && results[0].result ? results[0].result : '';
+
+      // Send message to the active tab to open with selected text
+      chrome.tabs.sendMessage(tab.id!, {
+        type: 'OPEN_WITH_TEXT',
+        text: selectedText
+      }).catch((error) => {
+        console.warn('Failed to send message to tab. Content script may not be loaded:', error);
+
+        // Try to inject content script and then send message
+        chrome.scripting.executeScript({
+          target: { tabId: tab.id! },
+          files: ['dist/content.js']
+        }).then(() => {
+          chrome.tabs.sendMessage(tab.id!, {
+            type: 'OPEN_WITH_TEXT',
+            text: selectedText
+          }).catch(err => console.error('Failed after injection:', err));
+        }).catch(err => console.error('Injection failed:', err));
+      });
+    }).catch((error) => {
+      console.error('Failed to get selection:', error);
+      // Fallback to selectionText if executeScript fails
+      const selectedText = info.selectionText || '';
+      chrome.tabs.sendMessage(tab.id!, {
+        type: 'OPEN_WITH_TEXT',
+        text: selectedText
+      }).catch(err => console.warn('Fallback message send failed:', err));
+    });
+  }
 });
 
 

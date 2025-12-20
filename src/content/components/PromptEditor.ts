@@ -100,17 +100,22 @@ export class PromptEditor extends Component {
 
         if (this.currentTab === 'prompt') {
             container.innerHTML = `
-                <input id="input-title" class="search-input" type="text" placeholder="Title" autocomplete="off" style="font-size:18px; font-weight:700; background:transparent !important; border:none !important; padding: 0 !important; margin-bottom:12px; height: auto;">
-                <div style="margin-bottom:16px;">
-                    <label style="display:block; font-size:12px; color:var(--txt-secondary); margin-bottom:4px;">Shortcut</label>
-                    <input id="input-quick" type="text" placeholder=".code" autocomplete="off" style="width:100%; background:var(--bg-input); color:var(--txt-primary); border:1px solid var(--border-subtle); padding:8px; border-radius:6px;">
+                <div style="display: flex; gap: 16px; align-items: flex-end; margin-bottom: 16px;">
+                    <div style="flex: 7; min-width: 0;">
+                        <input id="input-title" class="search-input" type="text" placeholder="Prompt Title" autocomplete="off" style="width: 100%; font-size:18px; font-weight:700; background:transparent !important; border:none !important; padding: 0 !important; height: auto; outline: none;">
+                    </div>
+                    <div style="flex: 3; min-width: 0;">
+                        <input id="input-quick" type="text" placeholder="Shortcut (.code)" autocomplete="off" style="width:100%; background:var(--bg-input); color:var(--txt-primary); border:1px solid var(--border-subtle); padding:8px; border-radius:6px; font-size: 13px;">
+                    </div>
                 </div>
                 <label style="display:block; font-size:12px; color:var(--txt-secondary); margin-bottom:4px;">Content</label>
-                <textarea id="input-body" placeholder="Type your prompt here..." autocomplete="off" style="width:100%; min-height:200px; background:var(--bg-input); color:var(--txt-primary); border:1px solid var(--border-subtle); padding:12px; border-radius:6px; resize:vertical;"></textarea>
+                <textarea id="input-body" placeholder="Type your prompt here..." autocomplete="off" style="width:100%; min-height:200px; background:var(--bg-input); color:var(--txt-primary); border:1px solid var(--border-subtle); padding:12px; border-radius:6px; resize:vertical; white-space: pre-wrap; font-family: inherit;"></textarea>
             `;
         } else {
             container.innerHTML = `
-                <input id="input-title" class="search-input" type="text" placeholder="Folder Title" autocomplete="off" style="font-size:18px; font-weight:700; background:transparent !important; border:none !important; padding: 0 !important; margin-bottom:12px; height: auto;">
+                <div style="margin-bottom: 16px;">
+                    <input id="input-title" class="search-input" type="text" placeholder="Folder Title (e.g. Work Prompts)" autocomplete="off" style="width: 100%; font-size:18px; font-weight:700; background:transparent !important; border:none !important; padding: 0 !important; height: auto; outline: none;">
+                </div>
             `;
         }
         const select = this.area?.querySelector('#input-folder') as HTMLSelectElement;
@@ -165,7 +170,7 @@ export class PromptEditor extends Component {
         select.value = selectedId || "";
     }
 
-    open(promptId?: string, folderId?: string, parentId?: string) {
+    open(promptId?: string, folderId?: string, parentId?: string, prefillText?: string) {
         if (!this.area) return;
 
         this.area.classList.add('open');
@@ -215,12 +220,23 @@ export class PromptEditor extends Component {
                 this.renderFolderOptions(f.parentId || null);
             }
         } else {
+            // Create new mode
             this.editingId = null;
             this.editingFolderId = null;
             this.currentTab = 'prompt';
             this.switchTab('prompt');
             this.draftTagIds = [];
             this.renderFolderOptions(parentId || null);
+
+            // Prefill text if provided (from context menu)
+            if (prefillText) {
+                setTimeout(() => {
+                    const bodyInput = this.area?.querySelector('#input-body') as HTMLTextAreaElement;
+                    if (bodyInput) {
+                        bodyInput.value = prefillText;
+                    }
+                }, 0);
+            }
         }
 
         if (this.onTagsChanged) this.onTagsChanged();

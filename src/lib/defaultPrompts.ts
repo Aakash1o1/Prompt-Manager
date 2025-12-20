@@ -6,11 +6,16 @@ export interface DefaultPrompt {
   text: string;
   quick?: string;
   tags?: string[];
+  folderName?: string; // NEW: Support for placing default prompts in folders
 }
 
 export interface DefaultTag {
   name: string;
   color: string;
+}
+
+export interface DefaultFolder {
+  name: string;
 }
 
 export const DEFAULT_TAGS: DefaultTag[] = [
@@ -20,41 +25,15 @@ export const DEFAULT_TAGS: DefaultTag[] = [
   { name: 'Creative', color: '#D39BFF' }
 ];
 
+export const DEFAULT_FOLDERS: DefaultFolder[] = [
+  { name: 'Organize prompts in folders' }
+];
+
 export const DEFAULT_PROMPTS: DefaultPrompt[] = [
   {
-    title: 'Explain Code',
-    quick: 'explain',
-    text: 'Please explain this code in simple terms, including what it does, how it works, and any important concepts:',
-    tags: ['Code']
-  },
-  {
-    title: 'Improve Writing',
-    quick: 'improve',
-    text: 'Please improve the following text for clarity, grammar, and readability while maintaining the original meaning:',
-    tags: ['Writing']
-  },
-  {
-    title: 'Summarize Content',
-    quick: 'summary',
-    text: 'Please provide a concise summary of the following content, highlighting the key points:',
-    tags: ['Analysis']
-  },
-  {
-    title: 'Creative Brainstorm',
-    quick: 'brainstorm',
-    text: 'Help me brainstorm creative ideas for the following topic. Provide diverse, innovative suggestions:',
-    tags: ['Creative']
-  },
-  {
-    title: 'Debug Code',
-    quick: 'debug',
-    text: 'Help me debug this code. Identify potential issues and suggest fixes:',
-    tags: ['Code']
-  },
-  {
-    title: 'Professional Email',
-    quick: 'email',
-    text: 'Help me write a professional email for the following situation:',
-    tags: ['Writing']
+    title: 'Type "expand" in your text bar',
+    quick: 'expand',
+    text: '1. Paste any prompt just by its shortcut\n2. To give access to any site, just press Alt + P there\n3. Organize prompts in folders',
+    folderName: 'Organize prompts in folders'
   }
 ];

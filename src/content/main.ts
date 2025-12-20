@@ -2,12 +2,13 @@
 import { createOrGetHost } from './host';
 import { renderUI } from './ui';
 import { getStorage, setStorage } from '../lib/storage';
-import { DEFAULT_PROMPTS, DEFAULT_TAGS } from '../lib/defaultPrompts';
+import { DEFAULT_PROMPTS, DEFAULT_TAGS, DEFAULT_FOLDERS } from '../lib/defaultPrompts';
 import { TextExpander } from './components/TextExpander';
 import { Store } from './store';
 
-type Prompt = { id: string; title: string; text: string; quick?: string; tags?: string[] };
+type Prompt = { id: string; title: string; text: string; quick?: string; tags?: string[]; parentId?: string | null };
 type Tag = { id: string; name: string; color: string; order: number };
+type Folder = { id: string; name: string; parentId: string | null; order: number; isExpanded?: boolean };
 
 type Settings = {
   popupHeightVh: number;
@@ -44,7 +45,7 @@ async function loadAndInit() {
   let prompts: Prompt[] = [];
   let settings: Settings = DEFAULT_SETTINGS;
   let tags: Tag[] = [];
-  let folders: any[] = [];
+  let folders: Folder[] = [];
   let isFirstInstall = false;
 
   // 2. Load Data
@@ -70,14 +71,14 @@ async function loadAndInit() {
   }
 
   try {
-    const f = await getStorage<any[]>(FOLDERS_KEY);
+    const f = await getStorage<Folder[]>(FOLDERS_KEY);
     folders = Array.isArray(f) ? f : [];
   } catch (e) {
     folders = [];
   }
 
   // 3. First Install Logic
-  if (prompts.length === 0 && tags.length === 0) {
+  if (prompts.length === 0 && tags.length === 0 && folders.length === 0) {
     isFirstInstall = true;
 
     // Create default tags
@@ -86,6 +87,15 @@ async function loadAndInit() {
       name: dt.name,
       color: dt.color,
       order: index
+    }));
+
+    // Create default folders
+    folders = DEFAULT_FOLDERS.map((df, index) => ({
+      id: uid(),
+      name: df.name,
+      parentId: null,
+      order: index,
+      isExpanded: true
     }));
 
     // Create default prompts
@@ -97,13 +107,21 @@ async function loadAndInit() {
           if (tag) promptTags.push(tag.id);
         }
       }
+
+      // Find parent folder ID if specified
+      let parentId: string | null = null;
+      if (dp.folderName) {
+        const folder = folders.find(f => f.name === dp.folderName);
+        if (folder) parentId = folder.id;
+      }
+
       return {
         id: uid(),
         title: dp.title,
         text: dp.text,
         quick: dp.quick,
         tags: promptTags,
-        parentId: null
+        parentId: parentId
       };
     });
 
@@ -113,10 +131,10 @@ async function loadAndInit() {
         setStorage({ [PROMPTS_KEY]: prompts }),
         setStorage({ [TAGS_KEY]: tags }),
         setStorage({ [SETTINGS_KEY]: settings }),
-        setStorage({ [FOLDERS_KEY]: [] }) // Ensure folders key exists
+        setStorage({ [FOLDERS_KEY]: folders })
       ]);
     } catch (e) {
-      console.warn('Failed to save default prompts/tags:', e);
+      console.warn('Failed to save default prompts/tags/folders:', e);
     }
   }
 
