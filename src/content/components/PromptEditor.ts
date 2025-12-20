@@ -2,127 +2,227 @@ import { Component } from './Component';
 
 export class PromptEditor extends Component {
     private area: HTMLElement | null = null;
-    private inputTitle: HTMLInputElement | null = null;
-    private inputQuick: HTMLInputElement | null = null;
-    private inputBody: HTMLTextAreaElement | null = null;
-    private saveBtn: HTMLButtonElement | null = null;
-    private cancelBtn: HTMLButtonElement | null = null;
-    private inputFolder: HTMLSelectElement | null = null;
-
-    public isOpen(): boolean {
-        return this.area ? this.area.classList.contains('open') : false;
-    }
-
-    // --- NEW PROPERTY ---
-    private deleteBtn: HTMLButtonElement | null = null;
-    // --------------------
-
+    private currentTab: 'prompt' | 'folder' = 'prompt';
     private editingId: string | null = null;
-
-    // Public property so App can read it
+    private editingFolderId: string | null = null;
     public draftTagIds: string[] = [];
-
-    // Callback for when tags change internally
     public onTagsChanged: (() => void) | null = null;
 
     mount(parent: HTMLElement) {
         this.area = parent.querySelector('#add-area');
-        this.inputTitle = parent.querySelector('#input-title');
-        this.inputQuick = parent.querySelector('#input-quick');
-        this.inputBody = parent.querySelector('#input-body');
-        this.saveBtn = parent.querySelector('#save-btn');
-        this.cancelBtn = parent.querySelector('#cancel-btn');
-        this.inputFolder = parent.querySelector('#input-folder');
-
-        if (this.saveBtn) {
-            this.saveBtn.addEventListener('click', () => this.save());
-        }
-
-        if (this.cancelBtn) {
-            this.cancelBtn.addEventListener('click', () => this.close());
-        }
+        if (!this.area) return;
+        this.renderForm();
+        this.setupFormListeners();
     }
 
-    // Helper method for App.ts to call
-    toggleTag(tagId: string) {
-        if (this.draftTagIds.includes(tagId)) {
-            this.draftTagIds = this.draftTagIds.filter(id => id !== tagId);
+    private renderForm() {
+        if (!this.area) return;
+        // FIX: Added width: 100%, overflow: hidden to wrapper for strict constraint
+        this.area.innerHTML = `
+            <div style="
+                padding: 20px; 
+                display: flex; 
+                flex-direction: column; 
+                gap: 16px; 
+                height: 100%; 
+                width: 100%; 
+                box-sizing: border-box; 
+                overflow: hidden;
+            ">
+                <!-- Header -->
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-shrink: 0;">
+                    <div style="display:flex; align-items:center; gap: 12px;">
+                        <span id="editor-title-label" style="font-weight:700; font-size:11px; color:var(--txt-secondary); text-transform:uppercase; letter-spacing: 0.05em;">Create New</span>
+                        <div class="tab-container">
+                            <button id="tab-prompt" class="tab-btn active">Prompt</button>
+                            <button id="tab-folder" class="tab-btn">Folder</button>
+                        </div>
+                    </div>
+                    <select id="input-folder" style="background:var(--bg-input); color:var(--txt-primary); border:1px solid var(--border-subtle); padding:4px 8px; border-radius:6px; font-size:12px; max-width: 120px;"></select>
+                </div>
+
+                <!-- Content (Scrollable) -->
+                <div id="form-content" style="
+                    flex: 1; 
+                    overflow-y: auto; 
+                    overflow-x: hidden; 
+                    padding-bottom: 10px;
+                    scrollbar-width: none;
+                ">
+                    <!-- Dynamic form fields injected here -->
+                </div>
+
+                <div style="
+                    display:flex; 
+                    gap:12px; 
+                    align-items: center;
+                    justify-content: flex-end;
+                    margin-top:auto; 
+                    padding-top: 16px; 
+                    flex-shrink: 0;
+                    border-top: 1px solid var(--border-subtle);
+                ">
+                    <button id="delete-btn" class="btn-ghost" style="color:var(--danger); display:none; margin-right: auto; padding: 8px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z"/>
+                            <path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z"/>
+                        </svg>
+                    </button>
+                    <button id="cancel-btn" class="btn-ghost">Cancel</button>
+                    <button id="save-btn" class="btn-primary">Save Changes</button>
+                </div>
+            </div>
+        `;
+    }
+
+    private setupFormListeners() {
+        const pTab = this.area?.querySelector('#tab-prompt');
+        const fTab = this.area?.querySelector('#tab-folder');
+
+        pTab?.addEventListener('click', () => this.switchTab('prompt'));
+        fTab?.addEventListener('click', () => this.switchTab('folder'));
+
+        this.area?.querySelector('#save-btn')?.addEventListener('click', () => this.save());
+        this.area?.querySelector('#cancel-btn')?.addEventListener('click', () => this.close());
+        this.area?.querySelector('#delete-btn')?.addEventListener('click', () => this.handleDelete());
+    }
+
+    private switchTab(tab: 'prompt' | 'folder') {
+        this.currentTab = tab;
+        this.area?.querySelector('#tab-prompt')?.classList.toggle('active', tab === 'prompt');
+        this.area?.querySelector('#tab-folder')?.classList.toggle('active', tab === 'folder');
+        this.renderFields();
+    }
+
+    private renderFields() {
+        const container = this.area?.querySelector('#form-content');
+        if (!container) return;
+
+        if (this.currentTab === 'prompt') {
+            container.innerHTML = `
+                <input id="input-title" class="search-input" type="text" placeholder="Title" autocomplete="off" style="font-size:18px; font-weight:700; background:transparent !important; border:none !important; padding: 0 !important; margin-bottom:12px; height: auto;">
+                <div style="margin-bottom:16px;">
+                    <label style="display:block; font-size:12px; color:var(--txt-secondary); margin-bottom:4px;">Shortcut</label>
+                    <input id="input-quick" type="text" placeholder=".code" autocomplete="off" style="width:100%; background:var(--bg-input); color:var(--txt-primary); border:1px solid var(--border-subtle); padding:8px; border-radius:6px;">
+                </div>
+                <label style="display:block; font-size:12px; color:var(--txt-secondary); margin-bottom:4px;">Content</label>
+                <textarea id="input-body" placeholder="Type your prompt here..." autocomplete="off" style="width:100%; min-height:200px; background:var(--bg-input); color:var(--txt-primary); border:1px solid var(--border-subtle); padding:12px; border-radius:6px; resize:vertical;"></textarea>
+            `;
         } else {
-            this.draftTagIds.push(tagId);
+            container.innerHTML = `
+                <input id="input-title" class="search-input" type="text" placeholder="Folder Title" autocomplete="off" style="font-size:18px; font-weight:700; background:transparent !important; border:none !important; padding: 0 !important; margin-bottom:12px; height: auto;">
+            `;
         }
-        // Notify if anyone is listening
-        if (this.onTagsChanged) this.onTagsChanged();
-        if (this.onTagsChanged) this.onTagsChanged();
+        const select = this.area?.querySelector('#input-folder') as HTMLSelectElement;
+        this.renderFolderOptions(select?.value || null);
     }
 
     private renderFolderOptions(selectedId: string | null) {
-        if (!this.inputFolder) return;
+        const select = this.area?.querySelector('#input-folder') as HTMLSelectElement;
+        if (!select) return;
 
-        this.inputFolder.innerHTML = '';
+        select.innerHTML = '';
 
         // Option 1: Root
         const rootOpt = document.createElement('option');
-        rootOpt.value = ""; // Empty string = Root (null)
+        rootOpt.value = "";
         rootOpt.textContent = "📁 (Root)";
-        this.inputFolder.appendChild(rootOpt);
+        select.appendChild(rootOpt);
 
-        // Recursive helper to render tree options
+        // Identify folders to exclude (the folder being edited and all its descendants)
+        const excludedIds = new Set<string>();
+        if (this.editingFolderId) {
+            excludedIds.add(this.editingFolderId);
+            const addDescendants = (id: string) => {
+                this.store.folders
+                    .filter(f => f.parentId === id)
+                    .forEach(f => {
+                        excludedIds.add(f.id);
+                        addDescendants(f.id);
+                    });
+            };
+            addDescendants(this.editingFolderId);
+        }
+
         const renderLevel = (parentId: string | null, depth: number) => {
             const children = this.store.folders
                 .filter(f => f.parentId == parentId)
+                .filter(f => !excludedIds.has(f.id)) // EXCLUDE
                 .sort((a, b) => (a.order || 0) - (b.order || 0));
 
             children.forEach(folder => {
                 const opt = document.createElement('option');
                 opt.value = folder.id;
-                // Add visual indentation using non-breaking spaces or dashes
-                const prefix = depth > 0 ? "— ".repeat(depth) : "";
+                const prefix = depth > 0 ? "\u00A0\u00A0".repeat(depth) : "";
                 opt.textContent = `${prefix}📁 ${folder.name}`;
-                this.inputFolder!.appendChild(opt);
+                select.appendChild(opt);
 
-                // Recurse
                 renderLevel(folder.id, depth + 1);
             });
         };
 
         renderLevel(null, 0);
-
-        // Set selected value
-        this.inputFolder.value = selectedId || "";
+        select.value = selectedId || "";
     }
 
-    open(promptId?: string) {
+    open(promptId?: string, folderId?: string, parentId?: string) {
         if (!this.area) return;
 
         this.area.classList.add('open');
         this.area.setAttribute('aria-hidden', 'false');
         this.shadow.getElementById('panel')?.classList.add('mode-add');
 
+        // Hide tab container and title label when editing an existing item
+        const isEditing = !!promptId || !!folderId;
+        const tabContainer = this.area.querySelector('.tab-container') as HTMLElement;
+        const titleLabel = this.area.querySelector('#editor-title-label') as HTMLElement;
+        const deleteBtn = this.area.querySelector('#delete-btn') as HTMLElement;
+
+        if (tabContainer) tabContainer.style.display = isEditing ? 'none' : '';
+        if (titleLabel) titleLabel.style.display = isEditing ? 'none' : '';
+        if (deleteBtn) deleteBtn.style.display = isEditing ? 'block' : 'none';
+
         if (promptId) {
             this.editingId = promptId;
+            this.editingFolderId = null;
+            this.currentTab = 'prompt';
+            this.switchTab('prompt');
+
+            // Populate fields
             const p = this.store.prompts.find(x => x.id === promptId);
             if (p) {
-                if (this.inputTitle) this.inputTitle.value = p.title;
-                if (this.inputQuick) this.inputQuick.value = p.quick || '';
-                if (this.inputBody) this.inputBody.value = p.text;
-                if (this.inputBody) this.inputBody.value = p.text;
+                const titleInput = this.area.querySelector('#input-title') as HTMLInputElement;
+                const quickInput = this.area.querySelector('#input-quick') as HTMLInputElement;
+                const bodyInput = this.area.querySelector('#input-body') as HTMLTextAreaElement;
+
+                if (titleInput) titleInput.value = p.title;
+                if (quickInput) quickInput.value = p.quick || '';
+                if (bodyInput) bodyInput.value = p.text;
+
                 this.draftTagIds = [...(p.tags || [])];
                 this.renderFolderOptions(p.parentId || null);
             }
-            // --- RENDER DELETE BUTTON (EDIT MODE) ---
-            this.renderDeleteButton();
-            // ---------------------------------------
+        } else if (folderId) {
+            this.editingId = null;
+            this.editingFolderId = folderId;
+            this.currentTab = 'folder';
+            this.switchTab('folder');
+
+            const f = this.store.folders.find(x => x.id === folderId);
+            if (f) {
+                const titleInput = this.area.querySelector('#input-title') as HTMLInputElement;
+                if (titleInput) titleInput.value = f.name;
+                this.renderFolderOptions(f.parentId || null);
+            }
         } else {
             this.editingId = null;
-            this.resetInputs();
+            this.editingFolderId = null;
+            this.currentTab = 'prompt';
+            this.switchTab('prompt');
             this.draftTagIds = [];
-            this.renderFolderOptions(null);
-            // --- REMOVE DELETE BUTTON (NEW MODE) ---
-            this.removeDeleteButton();
-            // ---------------------------------------
+            this.renderFolderOptions(parentId || null);
         }
 
-        // Trigger callback to sync dropdown if open
         if (this.onTagsChanged) this.onTagsChanged();
     }
 
@@ -131,80 +231,82 @@ export class PromptEditor extends Component {
         this.area.classList.remove('open');
         this.area.setAttribute('aria-hidden', 'true');
         this.shadow.getElementById('panel')?.classList.remove('mode-add');
-        this.resetInputs();
-
-        // --- CLEAN UP DELETE BUTTON ---
-        this.removeDeleteButton();
-        // ------------------------------
-
-        // Emit event so App knows to reset Dropdown
         this.shadow.dispatchEvent(new CustomEvent('editor-closed'));
     }
 
-    // --- NEW HELPER METHODS ---
-    private renderDeleteButton() {
-        // Prevent duplicate buttons
-        if (this.deleteBtn) return;
-        if (!this.area) return;
+    toggleTag(tagId: string) {
+        if (this.draftTagIds.includes(tagId)) {
+            this.draftTagIds = this.draftTagIds.filter(id => id !== tagId);
+        } else {
+            this.draftTagIds.push(tagId);
+        }
+        if (this.onTagsChanged) this.onTagsChanged();
+    }
 
-        this.deleteBtn = this.el('button', 'delete-btn') as HTMLButtonElement;
-        this.deleteBtn.title = 'Delete prompt';
-        this.deleteBtn.setAttribute('aria-label', 'Delete prompt');
-        this.deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M3 6h18M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6M10 6V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" fill="none"/></svg>';
+    public isOpen(): boolean {
+        return this.area ? this.area.classList.contains('open') : false;
+    }
 
-        this.deleteBtn.addEventListener('click', async (ev) => {
-            ev.stopPropagation();
-            if (!this.editingId) return;
-
-            if (confirm('Delete this prompt?')) {
+    private async handleDelete() {
+        if (this.currentTab === 'prompt' && this.editingId) {
+            if (confirm('Are you sure you want to delete this prompt?')) {
                 await this.store.deletePrompt(this.editingId);
+                this.shadow.dispatchEvent(new CustomEvent('show-toast', { detail: { message: 'Prompt deleted' } }));
                 this.close();
             }
-        });
-
-        this.area.appendChild(this.deleteBtn);
-    }
-
-    private removeDeleteButton() {
-        if (this.deleteBtn) {
-            this.deleteBtn.remove();
-            this.deleteBtn = null;
+        } else if (this.currentTab === 'folder' && this.editingFolderId) {
+            if (confirm('Are you sure you want to delete this folder? (Items inside will be moved to parent)')) {
+                await this.store.deleteFolder(this.editingFolderId);
+                this.shadow.dispatchEvent(new CustomEvent('show-toast', { detail: { message: 'Folder deleted' } }));
+                this.close();
+            }
         }
-    }
-    // --------------------------------
-
-    private resetInputs() {
-        if (this.inputTitle) this.inputTitle.value = '';
-        if (this.inputQuick) this.inputQuick.value = '';
-        if (this.inputBody) this.inputBody.value = '';
-        if (this.inputFolder) this.inputFolder.value = '';
     }
 
     private async save() {
-        const title = this.inputTitle?.value.trim();
-        const text = this.inputBody?.value;
-        const quick = this.inputQuick?.value.trim() || '';
-        const folderId = this.inputFolder?.value || null;
+        const titleInput = this.area?.querySelector('#input-title') as HTMLInputElement;
+        const folderInput = this.area?.querySelector('#input-folder') as HTMLSelectElement;
 
-        if (!title || !text) {
-            // REPLACED ALERT WITH TOAST EVENT
-            this.shadow.dispatchEvent(new CustomEvent('show-toast', {
-                detail: { message: 'Title and Body are required' }
-            }));
+        const title = titleInput?.value.trim();
+        const folderId = folderInput?.value || null;
+
+        if (!title) {
+            this.shadow.dispatchEvent(new CustomEvent('show-toast', { detail: { message: 'Title is required' } }));
             return;
         }
 
-        if (this.editingId) {
-            await this.store.updatePrompt(this.editingId, { title, text, quick, tags: this.draftTagIds, parentId: folderId });
-        } else {
-            await this.store.addPrompt(title, text, quick, this.draftTagIds, folderId);
+        try {
+            if (this.currentTab === 'prompt') {
+                const bodyInput = this.area?.querySelector('#input-body') as HTMLTextAreaElement;
+                const quickInput = this.area?.querySelector('#input-quick') as HTMLInputElement;
+                const text = bodyInput?.value;
+                const quick = quickInput?.value.trim() || '';
+
+                if (!text) {
+                    this.shadow.dispatchEvent(new CustomEvent('show-toast', { detail: { message: 'Content is required' } }));
+                    return;
+                }
+
+                if (this.editingId) {
+                    await this.store.updatePrompt(this.editingId, { title, text, quick, tags: this.draftTagIds, parentId: folderId });
+                } else {
+                    await this.store.addPrompt(title, text, quick, this.draftTagIds, folderId);
+                }
+            } else {
+                // Folder mode
+                if (this.editingFolderId) {
+                    await this.store.updateFolder(this.editingFolderId, { name: title, parentId: folderId });
+                } else {
+                    await this.store.addFolder(title, folderId);
+                }
+            }
+
+            this.shadow.dispatchEvent(new CustomEvent('show-toast', { detail: { message: 'Saved' } }));
+            this.close();
+        } catch (error) {
+            // Display validation errors to the user
+            const message = error instanceof Error ? error.message : 'Failed to save';
+            this.shadow.dispatchEvent(new CustomEvent('show-toast', { detail: { message } }));
         }
-
-        // OPTIONAL SUCCESS MESSAGE
-        this.shadow.dispatchEvent(new CustomEvent('show-toast', {
-            detail: { message: 'Saved' }
-        }));
-
-        this.close();
     }
 }

@@ -239,9 +239,46 @@ export class Store {
         }
     }
 
+    // --- Validation Helpers ---
+
+    /**
+     * Identifies what type of item causes a uniqueness conflict
+     */
+    private getConflictType(value: string, excludeId?: string): 'prompt' | 'folder' | 'shortcut' | null {
+        const normalized = value.trim().toLowerCase();
+        if (!normalized) return null;
+
+        // 1. Check against all prompt titles
+        if (this.prompts.some(p => p.id !== excludeId && p.title.trim().toLowerCase() === normalized)) {
+            return 'prompt';
+        }
+
+        // 2. Check against all folder names
+        if (this.folders.some(f => f.id !== excludeId && f.name.trim().toLowerCase() === normalized)) {
+            return 'folder';
+        }
+
+        // 3. Check against all shortcuts
+        if (this.prompts.some(p => p.id !== excludeId && p.quick && p.quick.trim().toLowerCase() === normalized)) {
+            return 'shortcut';
+        }
+
+        return null;
+    }
+
+    private throwConflictError(type: 'prompt' | 'folder' | 'shortcut') {
+        if (type === 'prompt') throw new Error('A prompt with this name already exists');
+        if (type === 'folder') throw new Error('A folder with this name already exists');
+        if (type === 'shortcut') throw new Error('A shortcut with this name already exists');
+    }
+
     // --- Folder Operations ---
 
     async addFolder(name: string, parentId: string | null = null) {
+        // Validate name uniqueness
+        const conflict = this.getConflictType(name);
+        if (conflict) this.throwConflictError(conflict);
+
         const newFolder: Folder = {
             id: uid(), // Uses existing uid() helper
             name,
@@ -256,6 +293,13 @@ export class Store {
     async updateFolder(id: string, updates: Partial<Folder>) {
         const idx = this.folders.findIndex(f => f.id === id);
         if (idx === -1) return;
+
+        // Validate name uniqueness if name is being updated
+        if (updates.name !== undefined) {
+            const conflict = this.getConflictType(updates.name, id);
+            if (conflict) this.throwConflictError(conflict);
+        }
+
         this.folders[idx] = { ...this.folders[idx], ...updates };
         await this.saveFolders();
     }
@@ -295,6 +339,21 @@ export class Store {
     // --- Prompt Management ---
 
     async addPrompt(title: string, text: string, quick: string, tagIds: string[], parentId: string | null = null) {
+        // Validate name uniqueness
+        const nameConflict = this.getConflictType(title);
+        if (nameConflict) this.throwConflictError(nameConflict);
+
+        // Validate shortcut uniqueness
+        if (quick) {
+            const shortcutConflict = this.getConflictType(quick);
+            if (shortcutConflict) this.throwConflictError(shortcutConflict);
+        }
+
+        // Ensure title and shortcut are different
+        if (quick && title.trim().toLowerCase() === quick.trim().toLowerCase()) {
+            throw new Error('Prompt name and shortcut must be different');
+        }
+
         const newPrompt: Prompt = {
             id: uid(),
             title,
@@ -310,6 +369,26 @@ export class Store {
     async updatePrompt(id: string, updates: Partial<Prompt>) {
         const idx = this.prompts.findIndex(p => p.id === id);
         if (idx === -1) return;
+
+        // Validate name uniqueness if title is being updated
+        if (updates.title !== undefined) {
+            const conflict = this.getConflictType(updates.title, id);
+            if (conflict) this.throwConflictError(conflict);
+        }
+
+        // Validate shortcut uniqueness if quick is being updated
+        if (updates.quick !== undefined) {
+            const conflict = this.getConflictType(updates.quick, id);
+            if (conflict) this.throwConflictError(conflict);
+        }
+
+        // Ensure title and shortcut are different (if both are present in updates or one is in store)
+        const finalTitle = updates.title !== undefined ? updates.title : this.prompts[idx].title;
+        const finalQuick = updates.quick !== undefined ? updates.quick : this.prompts[idx].quick;
+
+        if (finalQuick && finalTitle.trim().toLowerCase() === finalQuick.trim().toLowerCase()) {
+            throw new Error('Prompt name and shortcut must be different');
+        }
 
         this.prompts[idx] = { ...this.prompts[idx], ...updates };
         await this.savePrompts();

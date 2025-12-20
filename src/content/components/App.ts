@@ -90,7 +90,7 @@ export class App extends Component {
         if (this.panel?.classList.contains('open')) {
             this.closePanel();
         } else {
-            this.openPanel();
+            this.openPanel(true);
         }
     }
 
@@ -108,6 +108,14 @@ export class App extends Component {
         // --- Use helper method for editing ---
         this.shadow.addEventListener('edit-prompt', ((e: CustomEvent) => {
             this.openEditor(e.detail.promptId);
+        }) as EventListener);
+
+        this.shadow.addEventListener('edit-folder', ((e: CustomEvent) => {
+            this.openEditor(undefined, e.detail.folderId);
+        }) as EventListener);
+
+        this.shadow.addEventListener('add-to-folder', ((e: CustomEvent) => {
+            this.openEditor(undefined, undefined, e.detail.folderId);
         }) as EventListener);
 
         // --- EXISTING LISTENERS ---
@@ -141,11 +149,31 @@ export class App extends Component {
             this.showToast(e.detail.message);
         }) as EventListener);
         // -----------------------------
+
+        // NEW: Footer Button Wiring
+        const settingsBtn = this.shadow.getElementById('settings-btn');
+        if (settingsBtn) {
+            settingsBtn.addEventListener('click', () => this.settingsModal.open());
+        }
+
+        const newBtn = this.shadow.getElementById('new-btn');
+        if (newBtn) {
+            newBtn.addEventListener('click', () => this.openEditor()); // Opens in "New" mode
+        }
+
+        const copyBtn = this.shadow.getElementById('copy-btn');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', () => {
+                // Trigger the PromptList to copy the currently selected item
+                // (PromptList listens for 'nav-copy')
+                this.shadow.dispatchEvent(new CustomEvent('nav-copy'));
+            });
+        }
     }
 
     // --- HELPER METHOD ---
-    private openEditor(promptId?: string) {
-        this.promptEditor.open(promptId);
+    private openEditor(promptId?: string, folderId?: string, parentId?: string) {
+        this.promptEditor.open(promptId, folderId, parentId);
 
         // 1. Tell Dropdown to use Editor's tags for visuals
         this.tagDropdown.activeTagIds = this.promptEditor.draftTagIds;
@@ -188,7 +216,7 @@ export class App extends Component {
     private setupPanelBehavior() {
         if (!this.hotzone || !this.panel) return;
 
-        this.hotzone.addEventListener('mouseenter', () => this.openPanel());
+        this.hotzone.addEventListener('mouseenter', () => this.openPanel(false));
 
         // --- UPDATED KEYDOWN LISTENER (Hierarchy Logic) ---
         document.addEventListener('keydown', (ev) => {
@@ -311,14 +339,16 @@ export class App extends Component {
     }
     // -------------------------
 
-    private openPanel() {
+    private openPanel(shouldFocus: boolean = false) {
         if (this.panel) {
             this.panel.classList.add('open');
-            // Focus search
-            setTimeout(() => {
-                const search = this.shadow.getElementById('search-input');
-                if (search) (search as HTMLElement).focus();
-            }, 50);
+            // Focus search only if requested
+            if (shouldFocus) {
+                setTimeout(() => {
+                    const search = this.shadow.getElementById('search-input');
+                    if (search) (search as HTMLElement).focus();
+                }, 50);
+            }
         }
     }
 

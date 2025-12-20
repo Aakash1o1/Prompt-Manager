@@ -47,13 +47,7 @@ export class TextExpander {
         const word = this.getWordBeforeCaret(activeEl);
         if (!word) return;
 
-        // Check for Dot prefix (e.g. ".name")
-        if (!word.startsWith('..')) return;
-
-        const shortcut = word.slice(2); // remove '..'
-
-        // If shortcut is empty (user just typed ".."), do nothing
-        if (!shortcut) return;
+        const shortcut = word;
 
         // --- 4. FIND MATCH ---
         // Search the store for a prompt with this quick code

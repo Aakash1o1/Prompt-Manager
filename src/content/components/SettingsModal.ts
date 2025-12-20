@@ -7,37 +7,152 @@ import { Settings } from '../store';
  */
 export class SettingsModal extends Component {
     private area: HTMLElement | null = null;
-    private fontSizeInput: HTMLInputElement | null = null;
-    private themeToggle: HTMLInputElement | null = null;
-    private autoCloseToggle: HTMLInputElement | null = null;
-    private hotspotPosSelect: HTMLSelectElement | null = null;
-    private saveBtn: HTMLButtonElement | null = null;
-    private cancelBtn: HTMLButtonElement | null = null;
-    public isOpen(): boolean {
-        return this.area ? this.area.classList.contains('open') : false;
-    }
-
-
 
     mount(parent: HTMLElement) {
         this.area = parent.querySelector('#settings-area');
-        this.fontSizeInput = parent.querySelector('#s-font-size');
-        this.themeToggle = parent.querySelector('#s-theme');
-        this.autoCloseToggle = parent.querySelector('#s-auto-close');
-        this.hotspotPosSelect = parent.querySelector('#s-hotspot-pos');
-        this.saveBtn = parent.querySelector('#s-save');
-        this.cancelBtn = parent.querySelector('#s-cancel');
-
-        if (this.saveBtn) {
-            this.saveBtn.addEventListener('click', () => this.save());
-        }
-
-        if (this.cancelBtn) {
-            this.cancelBtn.addEventListener('click', () => this.close());
-        }
-
-        // Subscribe to settings updates to refresh UI
+        if (!this.area) return;
+        this.renderUI();
+        this.setupListeners();
         this.store.subscribe('settings_updated', () => this.loadSettings());
+    }
+
+    private renderUI() {
+        if (!this.area) return;
+
+        const isDark = this.store.settings.theme === 'dark';
+        const isAutoClose = this.store.settings.autoCloseOnHover;
+
+        this.area.innerHTML = `
+            <div style="
+                padding: 20px; 
+                display: flex; 
+                flex-direction: column; 
+                gap: 16px; 
+                height: 100%; 
+                box-sizing: border-box; 
+                overflow: hidden;
+            ">
+                <!-- Header -->
+                <div style="flex-shrink: 0;">
+                    <h2 style="margin: 0; font-size: 18px; font-weight: 600;">Settings</h2>
+                </div>
+                
+                <!-- Content (Scrollable) -->
+                <div style="
+                    flex: 1; 
+                    overflow-y: auto; 
+                    overflow-x: hidden;
+                    scrollbar-width: none;
+                ">
+                    <!-- Font Size (Segmented) -->
+                    <div class="settings-row">
+                        <label>Font Size</label>
+                        <div class="segmented-control" id="ctrl-font-size">
+                            <button class="segment-btn" data-size="10" style="font-size: 12px;">A</button>
+                            <button class="segment-btn" data-size="12" style="font-size: 18px;">A</button>
+                            <button class="segment-btn active" data-size="14" style="font-size: 24px;">A</button>
+                        </div>
+                    </div>
+
+                    <!-- Hotspot (Segmented) -->
+                    <div class="settings-row">
+                        <label>Hotspot Position</label>
+                        <div class="segmented-control" id="ctrl-hotspot-pos">
+                            <button class="segment-btn" data-pos="corner" title="Corner">
+                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6"/><circle cx="18" cy="18" r="3" fill="currentColor"/></svg>
+                            </button>
+                            <button class="segment-btn active" data-pos="edge" title="Edge">
+                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="18" y="4" width="4" height="16" rx="1"/><path d="M14 12H2m12 0-4-4m4 4-4 4"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- TOGGLE: Dark Theme -->
+                    <div class="settings-row">
+                        <label>Dark theme</label>
+                        <label class="toggle-label">
+                            <input type="checkbox" class="toggle-checkbox" id="s-theme" ${isDark ? 'checked' : ''}>
+                            <div class="toggle-switch">
+                                <div class="toggle-slider"></div>
+                            </div>
+                        </label>
+                    </div>
+
+                    <!-- TOGGLE: Auto Close -->
+                    <div class="settings-row" style="border-bottom: none;">
+                        <label>Auto-close</label>
+                        <label class="toggle-label">
+                            <input type="checkbox" class="toggle-checkbox" id="s-auto-close" ${isAutoClose ? 'checked' : ''}>
+                            <div class="toggle-switch">
+                                <div class="toggle-slider"></div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div style="
+                    display: flex; 
+                    gap: 12px; 
+                    align-items: center;
+                    justify-content: flex-end;
+                    padding-top: 16px; 
+                    flex-shrink: 0;
+                    border-top: 1px solid var(--border-subtle);
+                ">
+                    <button id="s-cancel" class="btn-ghost">Cancel</button>
+                    <button id="s-save" class="btn-primary">Save</button>
+                </div>
+            </div>
+        `;
+
+        this.setupListeners();
+    }
+
+    private setupListeners() {
+        this.setupSegmentedControl('ctrl-font-size');
+        this.setupSegmentedControl('ctrl-hotspot-pos');
+
+        this.area?.querySelector('#s-save')?.addEventListener('click', () => this.save());
+        this.area?.querySelector('#s-cancel')?.addEventListener('click', () => this.close());
+    }
+
+    private setupSegmentedControl(id: string) {
+        const container = this.area?.querySelector(`#${id}`);
+        if (!container) return;
+        const buttons = container.querySelectorAll('.segment-btn');
+        buttons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                buttons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+    }
+
+    private loadSettings() {
+        const s = this.store.settings;
+
+        this.setSegmentActive('ctrl-font-size', 'data-size', String(s.fontSizePx || 14));
+        this.setSegmentActive('ctrl-hotspot-pos', 'data-pos', s.hotspotPosition || 'edge');
+
+        const autoClose = this.area?.querySelector('#s-auto-close') as HTMLInputElement;
+        if (autoClose) autoClose.checked = s.autoCloseOnHover;
+
+        const theme = this.area?.querySelector('#s-theme') as HTMLInputElement;
+        if (theme) theme.checked = s.theme === 'dark';
+    }
+
+    private setSegmentActive(containerId: string, dataAttr: string, value: string) {
+        const container = this.area?.querySelector(`#${containerId}`);
+        if (!container) return;
+        const buttons = container.querySelectorAll('.segment-btn');
+        buttons.forEach(btn => {
+            if (btn.getAttribute(dataAttr) === value) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
     }
 
     open() {
@@ -57,38 +172,33 @@ export class SettingsModal extends Component {
         this.shadow.getElementById('panel')?.classList.remove('mode-settings');
     }
 
-    private loadSettings() {
-        if (this.fontSizeInput) this.fontSizeInput.value = String(this.store.settings.fontSizePx);
-        if (this.themeToggle) this.themeToggle.checked = this.store.settings.theme === 'dark';
-        if (this.autoCloseToggle) this.autoCloseToggle.checked = this.store.settings.autoCloseOnHover;
-        if (this.hotspotPosSelect) this.hotspotPosSelect.value = this.store.settings.hotspotPosition;
+    public isOpen(): boolean {
+        return this.area ? this.area.classList.contains('open') : false;
     }
 
     private async save() {
         const updates: Partial<Settings> = {};
 
-        if (this.fontSizeInput) {
-            const fontSize = parseInt(this.fontSizeInput.value);
-            if (!isNaN(fontSize)) updates.fontSizePx = fontSize;
+        const fontSizeBtn = this.area?.querySelector('#ctrl-font-size .segment-btn.active');
+        if (fontSizeBtn) {
+            const val = parseInt(fontSizeBtn.getAttribute('data-size') || '14');
+            updates.fontSizePx = val;
         }
 
-        if (this.themeToggle) {
-            updates.theme = this.themeToggle.checked ? 'dark' : 'light';
+        const posBtn = this.area?.querySelector('#ctrl-hotspot-pos .segment-btn.active');
+        if (posBtn) {
+            updates.hotspotPosition = posBtn.getAttribute('data-pos') as 'corner' | 'edge';
         }
 
-        if (this.autoCloseToggle) {
-            updates.autoCloseOnHover = this.autoCloseToggle.checked;
-        }
+        const autoClose = this.area?.querySelector('#s-auto-close') as HTMLInputElement;
+        if (autoClose) updates.autoCloseOnHover = autoClose.checked;
 
-        if (this.hotspotPosSelect) {
-            updates.hotspotPosition = this.hotspotPosSelect.value as 'corner' | 'edge';
-        }
+        const theme = this.area?.querySelector('#s-theme') as HTMLInputElement;
+        if (theme) updates.theme = theme.checked ? 'dark' : 'light';
 
         await this.store.updateSettings(updates);
-
-        // Apply settings to host (this would normally be done by a parent component or App)
         this.shadow.dispatchEvent(new CustomEvent('apply-settings'));
-
+        this.shadow.dispatchEvent(new CustomEvent('show-toast', { detail: { message: 'Settings saved' } }));
         this.close();
     }
 }

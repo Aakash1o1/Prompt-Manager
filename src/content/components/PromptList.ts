@@ -119,73 +119,64 @@ export class PromptList extends Component {
         }
     }
 
-    // 4. Update createFolderRow to handle clicks and depth
+    // 2. Update createFolderRow
     private createFolderRow(folder: Folder, depth: number, isExpanded: boolean = false): HTMLElement {
         const row = this.el('div', 'folder-row');
         row.dataset.folderId = folder.id;
 
-        this.applyIndentation(row, depth);
+        // Indentation
+        if (depth > 0) row.style.paddingLeft = `${16 + (depth * 16)}px`;
 
-        if (isExpanded) {
-            row.classList.add('expanded');
-        }
+        if (isExpanded) row.classList.add('expanded');
 
-        // --- Left Side (Chevron + Icon + Name) ---
-        // We wrap them in a div so they push the actions to the far right
-        const leftGroup = this.el('div', 'folder-left');
-        Object.assign(leftGroup.style, { display: 'flex', alignItems: 'center', gap: '8px', flex: '1', minWidth: '0' });
+        const left = this.el('div', 'folder-left');
 
-        const chevron = this.el('div', 'folder-icon chevron', '▶');
-        const icon = this.el('div', 'folder-icon', '📁');
-        const name = this.el('div', 'folder-name', folder.name);
+        // Chevron
+        const chevron = this.el('div', 'folder-icon chevron');
+        chevron.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
 
-        leftGroup.appendChild(chevron);
-        leftGroup.appendChild(icon);
-        leftGroup.appendChild(name);
+        // Folder Name
+        const name = this.el('span', '', folder.name);
 
-        row.appendChild(leftGroup);
+        left.appendChild(chevron);
+        left.appendChild(name);
+        row.appendChild(left);
 
-        // --- Right Side (Actions) ---
-        const actions = this.el('div', 'folder-actions');
+        // Right side: Count or Edit
+        // For now, let's keep it simple as per screenshot logic
+        // We can add the '2' count later if needed by filtering store prompts
 
-        // 1. Add Subfolder Button
-        const addBtn = this.el('button', 'folder-action-btn', '+');
-        addBtn.title = 'Create Subfolder';
-        addBtn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const subName = prompt(`Create subfolder in "${folder.name}":`);
-            if (subName && subName.trim()) {
-                await this.store.addFolder(subName.trim(), folder.id);
-                // Auto-expand the parent so we see the new child
-                if (!folder.isExpanded) {
-                    this.store.toggleFolderExpansion(folder.id);
-                }
-            }
-        });
-
-        // 2. Delete Button
-        const delBtn = this.el('button', 'folder-action-btn delete', '×');
-        delBtn.title = 'Delete Folder';
-        delBtn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            if (confirm(`Delete folder "${folder.name}"? Contents will move up.`)) {
-                await this.store.deleteFolder(folder.id);
-            }
-        });
-
-        actions.appendChild(addBtn);
-        actions.appendChild(delBtn);
-
-        row.appendChild(actions);
-
-        // --- Click Handler (Toggle) ---
+        // Click to Toggle
         row.addEventListener('click', (e) => {
             e.stopPropagation();
-            // Only allow toggling if NOT searching
             if (this.store.filterText.trim() === '') {
                 this.store.toggleFolderExpansion(folder.id);
             }
         });
+
+        // Add Edit Button container
+        const actions = this.el('div', 'row-actions');
+
+        const addBtn = this.el('button', 'action-btn');
+        addBtn.title = 'Add Sub-item';
+        addBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+        addBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.shadow.dispatchEvent(new CustomEvent('add-to-folder', { detail: { folderId: folder.id } }));
+        });
+
+        const editBtn = this.el('button', 'action-btn');
+        editBtn.title = 'Edit Folder';
+        editBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
+
+        editBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.shadow.dispatchEvent(new CustomEvent('edit-folder', { detail: { folderId: folder.id } }));
+        });
+
+        actions.appendChild(addBtn);
+        actions.appendChild(editBtn);
+        row.appendChild(actions);
 
         return row;
     }
@@ -244,19 +235,48 @@ export class PromptList extends Component {
         }
     }
 
-    private createPromptRow(p: Prompt): HTMLElement {
+    private createPromptRow(p: Prompt, showContext: boolean = false): HTMLElement {
         const row = this.el('div', 'row');
-        if (!p.quick) row.classList.add('heading-row');
         row.dataset.id = p.id;
 
-        // Click to copy
-        row.addEventListener('click', async () => {
-            const idx = this.filteredPrompts.findIndex(x => x.id === p.id);
-            if (idx !== -1) {
-                this.selectedIndex = idx;
-                this.updateSelectionVisuals();
-            }
+        // CLICK TO EDIT (New Behavior)
+        row.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.shadow.dispatchEvent(new CustomEvent('edit-prompt', { detail: { promptId: p.id } }));
+        });
 
+        const left = this.el('div', 'prompt-left');
+
+        // Title
+        const label = this.el('div', 'prompt-title', p.title);
+        left.appendChild(label);
+
+        // Context Badge
+        if (showContext && p.parentId) {
+            const folder = this.store.folders.find(f => f.id === p.parentId);
+            if (folder) {
+                const fBadge = this.el('span', 'prompt-folder-badge');
+                fBadge.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:2px"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> ${folder.name}`;
+                left.appendChild(fBadge);
+            }
+        }
+
+        row.appendChild(left);
+
+        // Shortcut Badge
+        if (p.quick) {
+            const badge = this.el('div', 'shortcut-badge', p.quick);
+            row.appendChild(badge);
+        }
+
+        // Add Copy Button container
+        const actions = this.el('div', 'row-actions');
+        const copyBtn = this.el('button', 'action-btn');
+        copyBtn.title = 'Copy Prompt';
+        copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+
+        copyBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
             try {
                 await navigator.clipboard.writeText(p.text);
                 this.shadow.dispatchEvent(new CustomEvent('show-toast', { detail: { message: 'Copied' } }));
@@ -265,54 +285,8 @@ export class PromptList extends Component {
             }
         });
 
-        // Left side
-        const left = this.el('div', 'left');
-
-        const isFiltered = this.store.filterText.trim() !== '' || this.store.selectedTagIds.length > 0;
-
-        // src/content/components/PromptList.ts inside createPromptRow
-
-        if (!isFiltered) {
-            const handle = this.el('div', 'drag-handle');
-            handle.innerHTML = '&#x2261;';
-
-            // Prevent click on handle from triggering copy on the row
-            handle.addEventListener('click', (ev) => {
-                ev.stopPropagation();
-            });
-
-            // NO MORE dragstart/dragend listeners here. They are delegated now.
-
-            left.appendChild(handle);
-        }
-
-
-        const label = this.el('div', 'label', p.title);
-        left.appendChild(label);
-
-        // Tags Chips
-        const isTagFilterActive = this.store.selectedTagIds.length > 0;
-        if (isTagFilterActive && p.tags && p.tags.length > 0) {
-            const chips = this.createTagChips(p.tags);
-            left.appendChild(chips);
-        }
-
-        // Right side (Icons)
-        const icons = this.el('div', 'icons');
-        const editBtn = this.el('button', 'icon-btn');
-        editBtn.innerHTML = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M3 21v-3.6l11.2-11.2 3.6 3.6L6.6 21H3zM20.7 7.3a1 1 0 0 0 0-1.4l-2.6-2.6a1 1 0 0 0-1.4 0l-1.8 1.8 3.6 3.6 1.8-1.4z" stroke="currentColor" fill="none"/></svg>';
-
-        editBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const event = new CustomEvent('edit-prompt', { detail: { promptId: p.id } });
-            this.shadow.dispatchEvent(event);
-        });
-
-        icons.appendChild(editBtn);
-        row.appendChild(left);
-        row.appendChild(icons);
-
-        row.addEventListener('dragover', (ev) => ev.preventDefault());
+        actions.appendChild(copyBtn);
+        row.appendChild(actions);
 
         return row;
     }
