@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Prompt Drawer",
+  "version": "1.2.0",
+  "description": "Manage and quickly paste/copy prompts (whitelisted hosts only).",
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab",
+    "commands"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+"commands": {
+    "open-prompt-drawer": {
+      "suggested_key": { "default": "Alt+P" },
+      "description": "Toggle the Prompt Drawer UI"
+    }
+  },
+"action": {
+    "default_title": "Prompt Drawer",
+    "default_popup": "action.html"
+  }
+}

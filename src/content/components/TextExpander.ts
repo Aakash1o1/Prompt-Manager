@@ -108,14 +108,34 @@ export class TextExpander {
                     range.setEnd(node, offset);
                     range.deleteContents();
 
-                    // 2. Insert the new text
-                    // We create a text node so we don't break HTML structure
-                    const newNode = document.createTextNode(replacement);
-                    range.insertNode(newNode);
+                    // 2. Insert the new text handling newlines
+                    const lines = replacement.split(/\r?\n/);
+                    const fragment = document.createDocumentFragment();
+                    let lastNode: Node | null = null;
 
-                    // 3. Move caret to end of inserted text
-                    range.setStartAfter(newNode);
-                    range.setEndAfter(newNode);
+                    lines.forEach((line, index) => {
+                        if (index > 0) {
+                            const br = document.createElement('br');
+                            fragment.appendChild(br);
+                            lastNode = br;
+                        }
+                        if (line) {
+                            const textNode = document.createTextNode(line);
+                            fragment.appendChild(textNode);
+                            lastNode = textNode;
+                        }
+                    });
+
+                    // 3. Insert and position caret
+                    if (lastNode) {
+                        range.insertNode(fragment);
+                        range.setStartAfter(lastNode);
+                        range.setEndAfter(lastNode);
+                    } else {
+                        // Edge case: empty replacement
+                        range.collapse(true);
+                    }
+
                     sel.removeAllRanges();
                     sel.addRange(range);
 

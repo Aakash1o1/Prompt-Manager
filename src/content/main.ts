@@ -52,6 +52,22 @@ async function loadAndInit() {
   try {
     const p = await getStorage<Prompt[]>(PROMPTS_KEY);
     prompts = Array.isArray(p) ? p : [];
+
+    // --- LEGACY DATA MIGRATION ---
+    // If user has old prompts without parentId, normalize them now.
+    let needsMigrationSave = false;
+    prompts.forEach(prompt => {
+      if (prompt.parentId === undefined) {
+        prompt.parentId = null;
+        needsMigrationSave = true;
+      }
+    });
+
+    if (needsMigrationSave) {
+      await setStorage({ [PROMPTS_KEY]: prompts });
+      console.log('Legacy prompts migrated to include parentId: null');
+    }
+    // -----------------------------
   } catch (e) {
     prompts = [];
   }

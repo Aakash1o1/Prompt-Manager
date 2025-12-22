@@ -8,6 +8,14 @@ export class PromptEditor extends Component {
     public draftTagIds: string[] = [];
     public onTagsChanged: (() => void) | null = null;
 
+    // State buffer to preserve inputs when switching tabs
+    private formData = {
+        title: '',
+        quick: '',
+        text: '',
+        folderId: '' as string | null
+    };
+
     mount(parent: HTMLElement) {
         this.area = parent.querySelector('#add-area');
         if (!this.area) return;
@@ -87,11 +95,47 @@ export class PromptEditor extends Component {
         this.area?.querySelector('#delete-btn')?.addEventListener('click', () => this.handleDelete());
     }
 
-    private switchTab(tab: 'prompt' | 'folder') {
+    private switchTab(tab: 'prompt' | 'folder', saveState: boolean = true) {
+        if (saveState) {
+            this.saveCurrentState();
+        }
         this.currentTab = tab;
         this.area?.querySelector('#tab-prompt')?.classList.toggle('active', tab === 'prompt');
         this.area?.querySelector('#tab-folder')?.classList.toggle('active', tab === 'folder');
         this.renderFields();
+        this.restoreState();
+    }
+
+    private saveCurrentState() {
+        if (!this.area) return;
+        const titleInput = this.area.querySelector('#input-title') as HTMLInputElement;
+        const quickInput = this.area.querySelector('#input-quick') as HTMLInputElement;
+        const bodyInput = this.area.querySelector('#input-body') as HTMLTextAreaElement;
+        const folderInput = this.area.querySelector('#input-folder') as HTMLSelectElement;
+
+        if (titleInput) this.formData.title = titleInput.value;
+        if (quickInput) this.formData.quick = quickInput.value;
+        if (bodyInput) this.formData.text = bodyInput.value;
+        // Only update folderId if the input exists (it's in the header, so it should usually exist)
+        if (folderInput) this.formData.folderId = folderInput.value || null;
+    }
+
+    private restoreState() {
+        if (!this.area) return;
+        const titleInput = this.area.querySelector('#input-title') as HTMLInputElement;
+        const quickInput = this.area.querySelector('#input-quick') as HTMLInputElement;
+        const bodyInput = this.area.querySelector('#input-body') as HTMLTextAreaElement;
+        const folderInput = this.area.querySelector('#input-folder') as HTMLSelectElement;
+
+        // Restore what makes sense for the current tab
+        if (titleInput) titleInput.value = this.formData.title;
+        if (quickInput) quickInput.value = this.formData.quick;
+        if (bodyInput) bodyInput.value = this.formData.text;
+
+        // Restore folder selection if valid
+        if (folderInput) {
+            folderInput.value = this.formData.folderId || "";
+        }
     }
 
     private renderFields() {
@@ -111,6 +155,22 @@ export class PromptEditor extends Component {
                 <label style="display:block; font-size:12px; color:var(--txt-secondary); margin-bottom:4px;">Content</label>
                 <textarea id="input-body" placeholder="Type your prompt here..." autocomplete="off" style="width:100%; min-height:200px; background:var(--bg-input); color:var(--txt-primary); border:1px solid var(--border-subtle); padding:12px; border-radius:6px; resize:vertical; white-space: pre-wrap; font-family: inherit;"></textarea>
             `;
+
+            // --- Add listener to prevent space in shortcut ---
+            const quickInput = container.querySelector('#input-quick') as HTMLInputElement;
+            if (quickInput) {
+                quickInput.addEventListener('keydown', (e) => {
+                    if (e.key === ' ' || e.code === 'Space') {
+                        e.preventDefault();
+                    }
+                });
+                quickInput.addEventListener('input', () => {
+                    if (quickInput.value.includes(' ')) {
+                        quickInput.value = quickInput.value.replace(/\s/g, '');
+                    }
+                });
+            }
+
         } else {
             container.innerHTML = `
                 <div style="margin-bottom: 16px;">
@@ -190,53 +250,57 @@ export class PromptEditor extends Component {
         if (promptId) {
             this.editingId = promptId;
             this.editingFolderId = null;
-            this.currentTab = 'prompt';
-            this.switchTab('prompt');
 
-            // Populate fields
+            // 1. Populate data from store
             const p = this.store.prompts.find(x => x.id === promptId);
             if (p) {
-                const titleInput = this.area.querySelector('#input-title') as HTMLInputElement;
-                const quickInput = this.area.querySelector('#input-quick') as HTMLInputElement;
-                const bodyInput = this.area.querySelector('#input-body') as HTMLTextAreaElement;
-
-                if (titleInput) titleInput.value = p.title;
-                if (quickInput) quickInput.value = p.quick || '';
-                if (bodyInput) bodyInput.value = p.text;
-
+                this.formData = {
+                    title: p.title,
+                    quick: p.quick || '',
+                    text: p.text,
+                    folderId: p.parentId || null
+                };
                 this.draftTagIds = [...(p.tags || [])];
-                this.renderFolderOptions(p.parentId || null);
             }
+
+            // 2. Switch tab (updates UI and restores from formData)
+            // Pass false to avoid saving previous state from DOM
+            this.switchTab('prompt', false);
+
         } else if (folderId) {
             this.editingId = null;
             this.editingFolderId = folderId;
-            this.currentTab = 'folder';
-            this.switchTab('folder');
 
+            // 1. Populate data from store
             const f = this.store.folders.find(x => x.id === folderId);
             if (f) {
-                const titleInput = this.area.querySelector('#input-title') as HTMLInputElement;
-                if (titleInput) titleInput.value = f.name;
-                this.renderFolderOptions(f.parentId || null);
+                this.formData = {
+                    title: f.name,
+                    quick: '',
+                    text: '',
+                    folderId: f.parentId || null
+                };
             }
+
+            // 2. Switch tab (updates UI and restores from formData)
+            this.switchTab('folder', false);
+
         } else {
             // Create new mode
             this.editingId = null;
             this.editingFolderId = null;
-            this.currentTab = 'prompt';
-            this.switchTab('prompt');
             this.draftTagIds = [];
-            this.renderFolderOptions(parentId || null);
 
-            // Prefill text if provided (from context menu)
-            if (prefillText) {
-                setTimeout(() => {
-                    const bodyInput = this.area?.querySelector('#input-body') as HTMLTextAreaElement;
-                    if (bodyInput) {
-                        bodyInput.value = prefillText;
-                    }
-                }, 0);
-            }
+            // 1. Initialize empty form state
+            this.formData = {
+                title: '',
+                quick: '',
+                text: prefillText || '', // Use prefillText if provided
+                folderId: parentId || null
+            };
+
+            // 2. Switch tab (updates UI and restores from formData)
+            this.switchTab('prompt', false);
         }
 
         if (this.onTagsChanged) this.onTagsChanged();
