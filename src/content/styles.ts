@@ -5,23 +5,23 @@ export const STYLES = `
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
   
   /* --- PALETTE (Deep Focus - Dark) --- */
-  --bg-app: #09090b;      /* Main Background */
-  --bg-panel: #18181b;    /* Cards & Modals */
-  --bg-input: #27272a;    /* Form Fields */
+  --bg-app: #09090b;      /* Zinc-950 - Main Panel Background */
+  --bg-panel: #18181b;    /* Zinc-900 - Floating Overlays/Modals */
+  --bg-input: #27272a;    /* Zinc-800 - Inputs, Textareas, Unselected Segments */
   --bg-hover: rgba(255, 255, 255, 0.08);
   --bg-active: rgba(255, 255, 255, 0.12);
   
-  --border-subtle: #27272a;
+  --border-subtle: #27272a; /* Zinc-800 - Subtle dividers */
   --border-default: #3f3f46;
-  --border-focus: #3b82f6;
+  --border-focus: #3b82f6; /* Blue-500 - Focus rings */
   
-  --accent: #3b82f6;      /* Primary Blue */
+  --accent: #3b82f6;      /* Blue-500 - Primary buttons/toggles */
   --accent-hover: #2563eb;
   --accent-dim: rgba(59, 130, 246, 0.15);
   --danger: #ef4444;
   
-  --txt-primary: #fafafa;
-  --txt-secondary: #a1a1aa;
+  --txt-primary: #fafafa;  /* Zinc-50 - High contrast text */
+  --txt-secondary: #a1a1aa; /* Zinc-400 - Labels and icons */
   --txt-muted: #52525b;
   
   --radius: 12px;
@@ -38,11 +38,12 @@ export const STYLES = `
 /* Light Theme Override */
 :host([data-theme="light"]) {
   /* --- BACKGROUNDS --- */
-  --bg-app: #f4f4f5;      /* Zinc-100 (Page/Toast bg) */
-  --bg-panel: #ffffff;    /* White (Card/Panel bg) */
-  --bg-input: #f4f4f5;    /* Zinc-100 */
-  --bg-hover: rgba(0, 0, 0, 0.04);
-  --bg-active: rgba(0, 0, 0, 0.08);
+  --bg-app: #ffffff;      /* Pure White - Main Panel Background */
+  --bg-panel: #ffffff;    /* Pure White */
+  --bg-input: #f4f4f5;    /* Zinc-100 - Light gray for inputs */
+  --bg-hover: #f4f4f5;    /* Zinc-100 */
+  --bg-active: #e4e4e7;   /* Zinc-200 */
+  --bg-selected: #eff6ff; /* Blue-50 - Faint blue for selected rows */
   
   /* --- BORDERS --- */
   --border-subtle: #e4e4e7; /* Zinc-200 */
@@ -50,14 +51,14 @@ export const STYLES = `
   --border-focus: #3b82f6;   /* Blue-500 */
   
   /* --- ACCENTS --- */
-  --accent: #2563eb;         /* Blue-600 (Darker for visibility on white) */
+  --accent: #2563eb;         /* Blue-600 - Darker for contrast on white */
   --accent-hover: #1d4ed8;   /* Blue-700 */
   --accent-dim: rgba(37, 99, 235, 0.1);
   --danger: #dc2626;         /* Red-600 */
   
   /* --- TYPOGRAPHY --- */
-  --txt-primary: #000000;    /* Pure Black */
-  --txt-secondary: #333333;  /* Dark Gray */
+  --txt-primary: #18181b;    /* Zinc-950 */
+  --txt-secondary: #71717a;  /* Zinc-500 */
   --txt-muted: #a1a1aa;      /* Zinc-400 */
 }
 
@@ -74,6 +75,24 @@ export const STYLES = `
 /* --- FORM ELEMENT BOX-SIZING --- */
 input, textarea, select {
   box-sizing: border-box;
+}
+
+/* Modern Input Styling - Borderless with focus states */
+input:not(.search-input):not(.toggle-checkbox), select, textarea {
+  background-color: var(--bg-input);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--txt-primary);
+  font-size: 14px;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+input:not(.search-input):not(.toggle-checkbox):focus, 
+select:focus, 
+textarea:focus {
+  background-color: #ffffff;
+  border-color: var(--border-focus);
+  outline: none;
 }
 
 /* --- GLOBAL ELEMENTS --- */
@@ -103,6 +122,11 @@ button {
   transform: translateY(10px) scale(0.98);
   transition: opacity 0.15s ease, transform 0.15s ease;
   pointer-events: none;
+}
+
+/* Softer shadow for light theme */
+:host([data-theme="light"]) .panel {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
 
 .panel.open {
@@ -182,7 +206,7 @@ button {
   align-items: center;
   justify-content: space-between;
   border-top: 1px solid var(--border-subtle);
-  background-color: var(--bg-panel);
+  background-color: var(--bg-app);
   flex-shrink: 0;
 }
 
@@ -231,7 +255,7 @@ textarea#input-body {
 .row, .folder-row {
   display: flex;
   align-items: center;
-  padding: 8px 16px;
+  padding: 10px 16px;
   cursor: pointer;
   color: var(--txt-secondary);
   transition: background 0.1s;
@@ -244,7 +268,7 @@ textarea#input-body {
 }
 
 .row.selected, .folder-row.selected {
-  background-color: var(--accent-dim);
+  background-color: var(--bg-selected, var(--accent-dim));
   color: var(--txt-primary);
 }
 
@@ -259,13 +283,15 @@ textarea#input-body {
 .folder-row.expanded .chevron { transform: rotate(90deg); }
 
 .shortcut-badge {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 4px;
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
   padding: 2px 6px;
   font-size: 11px;
   font-family: monospace;
-  color: var(--txt-secondary);
+  color: var(--accent);
   margin-left: 8px;
+  font-weight: 500;
 }
 
 /* --- EDIT BUTTONS (On Hover) --- */
@@ -351,7 +377,7 @@ textarea#input-body {
 
 /* --- STANDARD BUTTONS --- */
 .btn-primary {
-  background: var(--accent);
+  background-color: var(--accent);
   color: white;
   border: none;
   padding: 10px 16px;
@@ -359,10 +385,10 @@ textarea#input-body {
   font-weight: 600;
   font-size: 14px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background-color 0.2s;
 }
 .btn-primary:hover {
-  background: var(--accent-hover);
+  background-color: var(--accent-hover);
 }
 
 .btn-ghost {
@@ -373,10 +399,9 @@ textarea#input-body {
   border-radius: 8px;
   font-size: 14px;
   cursor: pointer;
-  transition: background 0.2s, color 0.2s;
+  transition: color 0.2s;
 }
 .btn-ghost:hover {
-  background: var(--bg-hover);
   color: var(--txt-primary);
 }
 
@@ -428,23 +453,24 @@ textarea#input-body {
 /* --- SEGMENTED CONTROL (Settings) --- */
 .segmented-control {
   display: flex;
-  background: var(--bg-input);
-  padding: 2px;
-  border-radius: var(--radius-sm);
-  gap: 2px;
+  background-color: var(--bg-input);
+  padding: 4px;
+  border-radius: 8px;
+  gap: 4px;
 }
 
 .segment-btn {
   flex: 1;
   padding: 6px;
-  border-radius: 4px;
+  border-radius: 6px;
   justify-content: center;
-  color: var(--txt-primary);
+  color: var(--txt-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
   background: transparent;
   border: none;
+  transition: color 0.2s;
 }
 
 .segment-btn.active {

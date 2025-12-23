@@ -349,10 +349,7 @@ export class Store {
             if (shortcutConflict) this.throwConflictError(shortcutConflict);
         }
 
-        // Ensure title and shortcut are different
-        if (quick && title.trim().toLowerCase() === quick.trim().toLowerCase()) {
-            throw new Error('Prompt name and shortcut must be different');
-        }
+        // Title and shortcut can be identical; no validation needed.
 
         const newPrompt: Prompt = {
             id: uid(),
@@ -386,9 +383,7 @@ export class Store {
         const finalTitle = updates.title !== undefined ? updates.title : this.prompts[idx].title;
         const finalQuick = updates.quick !== undefined ? updates.quick : this.prompts[idx].quick;
 
-        if (finalQuick && finalTitle.trim().toLowerCase() === finalQuick.trim().toLowerCase()) {
-            throw new Error('Prompt name and shortcut must be different');
-        }
+        // Title and shortcut can be identical; no validation needed.
 
         this.prompts[idx] = { ...this.prompts[idx], ...updates };
         await this.savePrompts();

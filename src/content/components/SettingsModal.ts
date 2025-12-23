@@ -46,7 +46,7 @@ export class SettingsModal extends Component {
                 ">
                     <!-- Font Size (Segmented) -->
                     <div class="settings-row">
-                        <label>Font Size</label>
+                        <label style="color: var(--txt-secondary); font-size: 13px;">Font Size</label>
                         <div class="segmented-control" id="ctrl-font-size">
                             <button class="segment-btn" data-size="10" style="font-size: 12px;">A</button>
                             <button class="segment-btn" data-size="12" style="font-size: 18px;">A</button>
@@ -56,7 +56,7 @@ export class SettingsModal extends Component {
 
                     <!-- Hotspot (Segmented) -->
                     <div class="settings-row">
-                        <label>Hotspot Position</label>
+                        <label style="color: var(--txt-secondary); font-size: 13px;">Hotspot Position</label>
                         <div class="segmented-control" id="ctrl-hotspot-pos">
                             <button class="segment-btn" data-pos="corner" title="Corner">
                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6"/><circle cx="18" cy="18" r="3" fill="currentColor"/></svg>
@@ -69,7 +69,7 @@ export class SettingsModal extends Component {
                     
                     <!-- TOGGLE: Dark Theme -->
                     <div class="settings-row">
-                        <label>Dark theme</label>
+                        <label style="color: var(--txt-secondary); font-size: 13px;">Dark theme</label>
                         <label class="toggle-label">
                             <input type="checkbox" class="toggle-checkbox" id="s-theme" ${isDark ? 'checked' : ''}>
                             <div class="toggle-switch">
@@ -80,7 +80,7 @@ export class SettingsModal extends Component {
 
                     <!-- TOGGLE: Auto Close -->
                     <div class="settings-row" style="border-bottom: none;">
-                        <label>Auto-close</label>
+                        <label style="color: var(--txt-secondary); font-size: 13px;">Auto-close</label>
                         <label class="toggle-label">
                             <input type="checkbox" class="toggle-checkbox" id="s-auto-close" ${isAutoClose ? 'checked' : ''}>
                             <div class="toggle-switch">
