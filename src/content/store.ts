@@ -239,45 +239,30 @@ export class Store {
         }
     }
 
-    // --- Validation Helpers ---
-
-    /**
-     * Identifies what type of item causes a uniqueness conflict
-     */
-    private getConflictType(value: string, excludeId?: string): 'prompt' | 'folder' | 'shortcut' | null {
-        const normalized = value.trim().toLowerCase();
-        if (!normalized) return null;
-
-        // 1. Check against all prompt titles
-        if (this.prompts.some(p => p.id !== excludeId && p.title.trim().toLowerCase() === normalized)) {
-            return 'prompt';
-        }
-
-        // 2. Check against all folder names
-        if (this.folders.some(f => f.id !== excludeId && f.name.trim().toLowerCase() === normalized)) {
-            return 'folder';
-        }
-
-        // 3. Check against all shortcuts
-        if (this.prompts.some(p => p.id !== excludeId && p.quick && p.quick.trim().toLowerCase() === normalized)) {
-            return 'shortcut';
-        }
-
-        return null;
+    private isTitleExists(title: string, excludeId?: string): boolean {
+        const normalized = title.trim().toLowerCase();
+        if (!normalized) return false;
+        return this.prompts.some(p => p.id !== excludeId && p.title.trim().toLowerCase() === normalized);
     }
 
-    private throwConflictError(type: 'prompt' | 'folder' | 'shortcut') {
-        if (type === 'prompt') throw new Error('A prompt with this name already exists');
-        if (type === 'folder') throw new Error('A folder with this name already exists');
-        if (type === 'shortcut') throw new Error('A shortcut with this name already exists');
+    private isFolderNameExists(name: string, excludeId?: string): boolean {
+        const normalized = name.trim().toLowerCase();
+        if (!normalized) return false;
+        return this.folders.some(f => f.id !== excludeId && f.name.trim().toLowerCase() === normalized);
+    }
+
+    private isShortcutExists(quick: string, excludeId?: string): boolean {
+        const normalized = quick.trim().toLowerCase();
+        if (!normalized) return false;
+        return this.prompts.some(p => p.id !== excludeId && p.quick && p.quick.trim().toLowerCase() === normalized);
     }
 
     // --- Folder Operations ---
 
     async addFolder(name: string, parentId: string | null = null) {
-        // Validate name uniqueness
-        const conflict = this.getConflictType(name);
-        if (conflict) this.throwConflictError(conflict);
+        if (this.isFolderNameExists(name)) {
+            throw new Error('A folder with this name already exists');
+        }
 
         const newFolder: Folder = {
             id: uid(), // Uses existing uid() helper
@@ -294,10 +279,10 @@ export class Store {
         const idx = this.folders.findIndex(f => f.id === id);
         if (idx === -1) return;
 
-        // Validate name uniqueness if name is being updated
         if (updates.name !== undefined) {
-            const conflict = this.getConflictType(updates.name, id);
-            if (conflict) this.throwConflictError(conflict);
+            if (this.isFolderNameExists(updates.name, id)) {
+                throw new Error('A folder with this name already exists');
+            }
         }
 
         this.folders[idx] = { ...this.folders[idx], ...updates };
@@ -339,17 +324,13 @@ export class Store {
     // --- Prompt Management ---
 
     async addPrompt(title: string, text: string, quick: string, tagIds: string[], parentId: string | null = null) {
-        // Validate name uniqueness
-        const nameConflict = this.getConflictType(title);
-        if (nameConflict) this.throwConflictError(nameConflict);
-
-        // Validate shortcut uniqueness
-        if (quick) {
-            const shortcutConflict = this.getConflictType(quick);
-            if (shortcutConflict) this.throwConflictError(shortcutConflict);
+        if (this.isTitleExists(title)) {
+            throw new Error('A prompt with this name already exists');
         }
 
-        // Title and shortcut can be identical; no validation needed.
+        if (quick && this.isShortcutExists(quick)) {
+            throw new Error('A shortcut with this name already exists');
+        }
 
         const newPrompt: Prompt = {
             id: uid(),
@@ -367,23 +348,18 @@ export class Store {
         const idx = this.prompts.findIndex(p => p.id === id);
         if (idx === -1) return;
 
-        // Validate name uniqueness if title is being updated
         if (updates.title !== undefined) {
-            const conflict = this.getConflictType(updates.title, id);
-            if (conflict) this.throwConflictError(conflict);
+            if (this.isTitleExists(updates.title, id)) {
+                throw new Error('A prompt with this name already exists');
+            }
         }
 
-        // Validate shortcut uniqueness if quick is being updated
-        if (updates.quick !== undefined) {
-            const conflict = this.getConflictType(updates.quick, id);
-            if (conflict) this.throwConflictError(conflict);
+        if (updates.quick !== undefined && updates.quick) {
+            if (this.isShortcutExists(updates.quick, id)) {
+                throw new Error('A shortcut with this name already exists');
+            }
         }
 
-        // Ensure title and shortcut are different (if both are present in updates or one is in store)
-        const finalTitle = updates.title !== undefined ? updates.title : this.prompts[idx].title;
-        const finalQuick = updates.quick !== undefined ? updates.quick : this.prompts[idx].quick;
-
-        // Title and shortcut can be identical; no validation needed.
 
         this.prompts[idx] = { ...this.prompts[idx], ...updates };
         await this.savePrompts();
