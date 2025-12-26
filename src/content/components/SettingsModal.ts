@@ -88,6 +88,20 @@ export class SettingsModal extends Component {
                             </div>
                         </label>
                     </div>
+
+                    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-subtle);">
+                        <label style="color: var(--txt-secondary); font-size: 11px; text-transform: uppercase; display: block; margin-bottom: 12px;">Data Management</label>
+                        <div style="display: flex; gap: 8px;">
+                            <button id="btn-export-trigger" class="btn-ghost" style="flex: 1; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4m4-5 5 5 5-5m-5 5V3"/></svg>
+                                Export
+                            </button>
+                            <button id="btn-import-trigger" class="btn-ghost" style="flex: 1; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4m7-7-5-5-5 5m5-5v12"/></svg>
+                                Import
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Footer -->
@@ -115,6 +129,14 @@ export class SettingsModal extends Component {
 
         this.area?.querySelector('#s-save')?.addEventListener('click', () => this.save());
         this.area?.querySelector('#s-cancel')?.addEventListener('click', () => this.close());
+
+        this.area?.querySelector('#btn-export-trigger')?.addEventListener('click', () => {
+            this.shadow.dispatchEvent(new CustomEvent('open-export-overlay'));
+        });
+
+        this.area?.querySelector('#btn-import-trigger')?.addEventListener('click', () => {
+            this.shadow.dispatchEvent(new CustomEvent('open-import-overlay'));
+        });
     }
 
     private setupSegmentedControl(id: string) {

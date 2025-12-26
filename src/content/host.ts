@@ -74,6 +74,8 @@ export function createOrGetHost() {
       <!-- 4. OVERLAYS -->
       <div id="add-area" class="overlay-area"></div>
       <div id="settings-area" class="overlay-area"></div>
+      <div id="export-area" class="overlay-area"></div>
+      <div id="import-area" class="overlay-area"></div>
 
       <!-- 5. UTILS -->
       <div class="toast" id="toast"></div>

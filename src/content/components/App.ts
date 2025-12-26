@@ -5,6 +5,8 @@ import { TagDropdown } from './TagDropdown';
 import { PromptList } from './PromptList';
 import { PromptEditor } from './PromptEditor';
 import { SettingsModal } from './SettingsModal';
+import { ExportOverlay } from './ExportOverlay';
+import { ImportOverlay } from './ImportOverlay';
 import { setupResizeHandles } from '../resize';
 
 export class App extends Component {
@@ -13,6 +15,8 @@ export class App extends Component {
     private promptList: PromptList;
     private promptEditor: PromptEditor;
     private settingsModal: SettingsModal;
+    private exportOverlay: ExportOverlay;
+    private importOverlay: ImportOverlay;
 
     private host: HTMLElement;
     private panel: HTMLElement | null = null;
@@ -41,6 +45,8 @@ export class App extends Component {
         this.promptList = new PromptList(store, shadow);
         this.promptEditor = new PromptEditor(store, shadow);
         this.settingsModal = new SettingsModal(store, shadow);
+        this.exportOverlay = new ExportOverlay(store, shadow);
+        this.importOverlay = new ImportOverlay(store, shadow);
     }
 
     mount(parent: HTMLElement) { // ShadowRoot is passed as parent usually
@@ -63,6 +69,8 @@ export class App extends Component {
             this.promptList.mount(this.panel);
             this.promptEditor.mount(this.panel);
             this.settingsModal.mount(this.panel);
+            this.exportOverlay.mount(this.panel);
+            this.importOverlay.mount(this.panel);
 
             // Setup resize handles
             setupResizeHandles({
@@ -133,6 +141,17 @@ export class App extends Component {
         this.shadow.addEventListener('open-settings', () => this.settingsModal.open());
         this.shadow.addEventListener('close-panel', () => this.closePanel());
         this.shadow.addEventListener('apply-settings', () => this.applySettings());
+
+        this.shadow.addEventListener('open-export-overlay', () => {
+            this.settingsModal.close(); // Close settings first
+            this.exportOverlay.open();
+        });
+
+        this.shadow.addEventListener('open-import-overlay', () => {
+            this.settingsModal.close();
+            this.importOverlay.open();
+        });
+
 
         // --- NAVIGATION WIRING ---
         this.shadow.addEventListener('nav-next', () => this.promptList.selectNext());

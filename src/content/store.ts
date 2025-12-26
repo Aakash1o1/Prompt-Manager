@@ -3,6 +3,33 @@ import { getStorage, setStorage } from '../lib/storage';
 import { DEFAULT_PROMPTS, DEFAULT_TAGS } from '../lib/defaultPrompts';
 
 // --- Types ---
+export interface BackupMetadata {
+    timestamp: string;
+    schemaVersion: number;
+    itemCount: number;
+}
+
+export interface BackupData {
+    metadata: BackupMetadata;
+    prompts: Prompt[];
+    folders: Folder[];
+}
+
+export interface ImportConflict {
+    title: boolean;
+    shortcut: boolean;
+    body: string | null; // Changed from boolean to string | null
+}
+
+export interface ValidatedPrompt extends Prompt {
+    conflicts: ImportConflict;
+    isExcluded: boolean; // For user selection
+}
+
+export interface ValidatedFolder extends Folder {
+    isExcluded: boolean; // For user selection
+}
+
 export type Prompt = {
     id: string;
     title: string;
@@ -201,6 +228,141 @@ export class Store {
     }
 
     // --- Persistence Methods ---
+
+    /**
+     * Prepares the JSON structure for export based on selected IDs.
+     */
+    prepareExportData(selectedPromptIds: string[], selectedFolderIds: string[]): BackupData {
+        const exportedPrompts = this.prompts.filter(p => selectedPromptIds.includes(p.id));
+        const exportedFolders = this.folders.filter(f => selectedFolderIds.includes(f.id));
+
+        return {
+            metadata: {
+                timestamp: new Date().toISOString(),
+                schemaVersion: 1,
+                itemCount: exportedPrompts.length
+            },
+            prompts: exportedPrompts,
+            folders: exportedFolders
+        };
+    }
+
+    /**
+     * Triggers a browser download of the provided data as a .json file.
+     */
+    triggerDownload(data: BackupData) {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const date = new Date().toISOString().split('T')[0];
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `prompts_backup_${date}.json`;
+
+        // Append to body, click, and remove
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
+
+    validateImportData(data: BackupData): { prompts: ValidatedPrompt[], folders: ValidatedFolder[] } {
+        const validatedPrompts: ValidatedPrompt[] = data.prompts.map(incoming => {
+            const titleMatch = this.prompts.some(p => p.title.trim().toLowerCase() === incoming.title.trim().toLowerCase());
+            const shortcutMatch = incoming.quick 
+                ? this.prompts.some(p => p.quick?.trim().toLowerCase() === incoming.quick?.trim().toLowerCase()) 
+                : false;
+            
+            // FIND the actual matching prompt to get its title
+            const matchingBodyPrompt = this.prompts.find(p => p.text.trim() === incoming.text.trim());
+
+            return {
+                ...incoming,
+                isExcluded: false,
+                conflicts: {
+                    title: titleMatch,
+                    shortcut: shortcutMatch,
+                    body: matchingBodyPrompt ? matchingBodyPrompt.title : null // Store the title
+                }
+            };
+        });
+
+        const validatedFolders: ValidatedFolder[] = data.folders.map(incoming => ({
+            ...incoming,
+            isExcluded: false
+        }));
+
+        return { prompts: validatedPrompts, folders: validatedFolders };
+    }
+
+    /**
+     * Finalizes the import by merging folder structures and creating new prompts.
+     */
+    async finalizeImport(
+        selectedPrompts: ValidatedPrompt[], 
+        selectedFolders: ValidatedFolder[]
+    ) {
+        // Map to track { importedFolderId : actualLocalFolderId }
+        const idMap = new Map<string | null, string | null>();
+        idMap.set(null, null); // Root maps to Root
+
+        // We must process folders level by level to ensure parents exist before children
+        // Sort by depth (simplest way is to process recursively)
+        const processFolders = async (importedParentId: string | null, localParentId: string | null, depth: number) => {
+            if (depth > 10) return; // Max depth safety
+
+            const children = selectedFolders.filter(f => f.parentId === importedParentId);
+
+            for (const importedFolder of children) {
+                // Check if folder with same name exists at this local level
+                let existingLocal = this.folders.find(f => 
+                    f.parentId === localParentId && 
+                    f.name.trim().toLowerCase() === importedFolder.name.trim().toLowerCase()
+                );
+
+                let localId: string;
+
+                if (existingLocal) {
+                    localId = existingLocal.id;
+                } else {
+                    // Create new folder
+                    localId = (crypto as any).randomUUID?.() ?? Math.random().toString(36).slice(2, 9);
+                    this.folders.push({
+                        id: localId,
+                        name: importedFolder.name,
+                        parentId: localParentId,
+                        order: this.folders.length,
+                        isExpanded: true
+                    });
+                }
+
+                idMap.set(importedFolder.id, localId);
+                // Recurse to children
+                await processFolders(importedFolder.id, localId, depth + 1);
+            }
+        };
+
+        // 1. Merge Folders
+        await processFolders(null, null, 0);
+
+        // 2. Create Prompts
+        selectedPrompts.forEach(p => {
+            const newId = (crypto as any).randomUUID?.() ?? Math.random().toString(36).slice(2, 9);
+            const mappedParentId = idMap.get(p.parentId || null) || null;
+
+            this.prompts.push({
+                id: newId,
+                title: p.title,
+                text: p.text,
+                quick: p.quick,
+                tags: [], // Tags removed as per requirement
+                parentId: mappedParentId
+            });
+        });
+
+        // 3. Persist everything
+        await Promise.all([this.saveFolders(), this.savePrompts()]);
+    }
 
     async savePrompts() {
         try {
