@@ -8,6 +8,7 @@ export class ImportOverlay extends Component {
     private validatedPrompts: ValidatedPrompt[] = [];
     private validatedFolders: ValidatedFolder[] = [];
     private selectedIds: Set<string> = new Set();
+    private warnings: string[] = [];
 
     mount(parent: HTMLElement) {
         this.area = parent.querySelector('#import-area');
@@ -61,9 +62,17 @@ export class ImportOverlay extends Component {
                 const json = JSON.parse(event.target?.result as string) as BackupData;
                 if (!json.prompts || !json.folders) throw new Error('Invalid format');
                 
-                const validated = this.store.validateImportData(json);
-                this.validatedPrompts = validated.prompts;
-                this.validatedFolders = validated.folders;
+                const { prompts, folders, warnings } = this.store.validateImportData(json);
+                this.validatedPrompts = prompts;
+                this.validatedFolders = folders;
+                this.warnings = warnings;
+                
+                // Show warnings as toasts
+                if (this.warnings.length > 0) {
+                    this.warnings.forEach(msg => {
+                        this.shadow.dispatchEvent(new CustomEvent('show-toast', { detail: { message: msg } }));
+                    });
+                }
                 
                 // Default select all
                 this.selectedIds = new Set([
@@ -72,8 +81,11 @@ export class ImportOverlay extends Component {
                 ]);
 
                 this.renderPreview();
-            } catch (err) {
-                this.shadow.dispatchEvent(new CustomEvent('show-toast', { detail: { message: 'Error reading backup file' } }));
+            } catch (err: any) {
+                console.error(err);
+                // Show the actual error message from the store
+                const msg = err.message || 'Invalid backup file';
+                this.shadow.dispatchEvent(new CustomEvent('show-toast', { detail: { message: msg } }));
             }
         };
         reader.readAsText(file);
@@ -90,6 +102,12 @@ export class ImportOverlay extends Component {
                     <h2 style="margin:0; font-size:18px;">Review Import</h2>
                     <p style="font-size:12px; color:var(--txt-secondary); margin: 4px 0 12px 0;">Resolve red highlights before importing.</p>
                 </div>
+
+                ${this.warnings.length > 0 ? `
+                    <div style="padding: 10px; background: rgba(245, 158, 11, 0.1); border: 1px solid #f59e0b; border-radius: 8px; color: #f59e0b; font-size: 11px; display: flex; flex-direction: column; gap: 4px;">
+                        ${this.warnings.map(w => `<div>⚠ ${w}</div>`).join('')}
+                    </div>
+                ` : ''}
 
                 <div id="import-tree-container" style="flex:1; overflow-y:auto; scrollbar-width:none; border:1px solid var(--border-subtle); border-radius:8px; background: rgba(0,0,0,0.05);">
                     <!-- Tree Rows -->

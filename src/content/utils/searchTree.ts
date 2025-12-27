@@ -36,8 +36,7 @@ export function getVisibleIds(
     // 1. Check Prompts
     prompts.forEach(p => {
         if (p.title.toLowerCase().includes(query) ||
-            (p.quick && p.quick.toLowerCase().includes(query)) ||
-            (p.text && p.text.toLowerCase().includes(query))
+            (p.quick && p.quick.toLowerCase().includes(query))
         ) {
             visibleIds.add(p.id);
             addWithAncestors(p.parentId);

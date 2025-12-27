@@ -1,0 +1,7 @@
+{
+  "metadata": { "schemaVersion": 1 },
+  "prompts": [
+    { "id": "old-1", "title": "Old Prompt", "text": "No attributes", "parentId": null }
+  ],
+  "folders": []
+}

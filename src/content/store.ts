@@ -1,8 +1,9 @@
-// src/content/store.ts
 import { getStorage, setStorage } from '../lib/storage';
 import { DEFAULT_PROMPTS, DEFAULT_TAGS } from '../lib/defaultPrompts';
 
-// --- Types ---
+// 1. Version Constants
+export const CURRENT_SCHEMA_VERSION = 2;
+
 export interface BackupMetadata {
     timestamp: string;
     schemaVersion: number;
@@ -39,6 +40,7 @@ export type Prompt = {
     parentId?: string | null; // NEW: ID of parent folder, or null for root
     lastUsed?: number; // ADD THIS: Unix timestamp
     isPinned?: boolean; // ADD THIS
+    attributes?: Record<string, any>; // NEW: Flexible bag
 };
 
 export type Folder = {
@@ -47,6 +49,7 @@ export type Folder = {
     parentId: string | null;
     order: number;       // For sorting folders amongst themselves
     isExpanded?: boolean; // Runtime only state for UI accordion
+    attributes?: Record<string, any>; // NEW: Flexible bag
 };
 
 export type Tag = {
@@ -90,6 +93,27 @@ const DEFAULT_SETTINGS: Settings = {
 function uid() {
     return (crypto as any).randomUUID?.() ?? Math.random().toString(36).slice(2, 9);
 }
+
+const MIGRATIONS: Record<number, (data: any) => any> = {
+    // Migration v1 -> v2
+    // Goal: Ensure 'attributes' object exists on all items
+    2: (data: any) => {
+        console.log("Migrating data to v2...");
+        if (Array.isArray(data.prompts)) {
+            data.prompts = data.prompts.map((p: any) => ({
+                ...p,
+                attributes: p.attributes || {} // Initialize if missing
+            }));
+        }
+        if (Array.isArray(data.folders)) {
+            data.folders = data.folders.map((f: any) => ({
+                ...f,
+                attributes: f.attributes || {} // Initialize if missing
+            }));
+        }
+        return data;
+    }
+};
 
 /**
  * The Store class acts as the "Brain" of the application.
@@ -148,6 +172,35 @@ export class Store {
                 this.notify('folders_updated');
             }
         });
+    }
+
+    /**
+     * Pipelines the data through necessary migrations up to CURRENT_SCHEMA_VERSION.
+     */
+    private migrateData(data: BackupData): BackupData {
+        // Deep copy to avoid mutating original reference during dry-runs
+        let processed = JSON.parse(JSON.stringify(data));
+        
+        // Default to 0 if missing (legacy files)
+        const fileVersion = processed.metadata?.schemaVersion || 0;
+
+        // UPGRADE PATH (Old -> New)
+        if (fileVersion < CURRENT_SCHEMA_VERSION) {
+            for (let v = fileVersion + 1; v <= CURRENT_SCHEMA_VERSION; v++) {
+                if (MIGRATIONS[v]) {
+                    try {
+                        processed = MIGRATIONS[v](processed);
+                    } catch (e) {
+                        console.error(`Migration to v${v} failed`, e);
+                    }
+                }
+            }
+            // Update metadata after successful migration
+            if (!processed.metadata) processed.metadata = {} as BackupMetadata;
+            processed.metadata.schemaVersion = CURRENT_SCHEMA_VERSION;
+        }
+
+        return processed;
     }
 
     async load() {
@@ -243,7 +296,7 @@ export class Store {
         return {
             metadata: {
                 timestamp: new Date().toISOString(),
-                schemaVersion: 1,
+                schemaVersion: CURRENT_SCHEMA_VERSION,
                 itemCount: exportedPrompts.length
             },
             prompts: exportedPrompts,
@@ -270,14 +323,88 @@ export class Store {
         URL.revokeObjectURL(url);
     }
 
-    validateImportData(data: BackupData): { prompts: ValidatedPrompt[], folders: ValidatedFolder[] } {
+// src/content/store.ts -> validateImportData
+
+    validateImportData(rawData: BackupData): { prompts: ValidatedPrompt[], folders: ValidatedFolder[], warnings: string[] } {
+        const warnings: string[] = [];
+
+        // 1. Basic Schema Check
+        if (!rawData || !Array.isArray(rawData.prompts) || !Array.isArray(rawData.folders)) {
+            throw new Error('Invalid backup format: Missing prompts or folders arrays.');
+        }
+
+        // 2. Downgrade Check
+        const fileVersion = rawData.metadata?.schemaVersion || 0;
+        if (fileVersion > CURRENT_SCHEMA_VERSION) {
+            warnings.push(`Backup is from a newer version (v${fileVersion}). Some features may be missing.`);
+        }
+
+        // 3. Run Migrations
+        const data = this.migrateData(rawData);
+
+        // --- STEP 4: SANITIZATION (Enhanced) ---
+        const validFolderIds = new Set(data.folders.map(f => f.id));
+
+        // Fix Folders
+        data.folders.forEach(f => {
+            // Case A: Parent ID points to non-existent folder
+            if (f.parentId && !validFolderIds.has(f.parentId)) {
+                // console.warn(`Folder ${f.name} had invalid parent ${f.parentId}, moving to Root.`);
+                f.parentId = null;
+            }
+            // Case B: Parent ID points to ITSELF
+            if (f.id === f.parentId) {
+                console.warn(`Folder "${f.name}" refers to itself. Moving to Root.`);
+                f.parentId = null;
+            }
+        });
+
+        // Fix Prompts
+        data.prompts.forEach(p => {
+            // Case A: Parent ID points to non-existent folder
+            if (p.parentId && !validFolderIds.has(p.parentId)) {
+                // console.warn(`Prompt ${p.title} had invalid parent ${p.parentId}, moving to Root.`);
+                p.parentId = null;
+            }
+            // Case B: Prompt points to itself (Unlikely but safe to check)
+            if (p.id === p.parentId) {
+                p.parentId = null;
+            }
+        });
+        // --------------------------------------
+
+        // 5. Circular Dependency & Depth Check
+        const folderMap = new Map<string, string | null>();
+        data.folders.forEach(f => folderMap.set(f.id, f.parentId));
+
+        for (const folder of data.folders) {
+            let currentId: string | null = folder.id;
+            const visited = new Set<string>();
+            let depth = 0;
+
+            while (currentId) {
+                if (visited.has(currentId)) {
+                    throw new Error(`Circular dependency detected in folder structure (Folder ID: ${folder.id})`);
+                }
+                
+                visited.add(currentId);
+                depth++;
+
+                if (depth > 20) {
+                     throw new Error(`Folder structure too deep (Level ${depth}). Max allowed is 20.`);
+                }
+
+                currentId = folderMap.get(currentId) || null;
+            }
+        }
+
+        // 6. Prompt Validation & Conflict Detection (Existing Logic)
         const validatedPrompts: ValidatedPrompt[] = data.prompts.map(incoming => {
             const titleMatch = this.prompts.some(p => p.title.trim().toLowerCase() === incoming.title.trim().toLowerCase());
             const shortcutMatch = incoming.quick 
                 ? this.prompts.some(p => p.quick?.trim().toLowerCase() === incoming.quick?.trim().toLowerCase()) 
                 : false;
             
-            // FIND the actual matching prompt to get its title
             const matchingBodyPrompt = this.prompts.find(p => p.text.trim() === incoming.text.trim());
 
             return {
@@ -286,7 +413,7 @@ export class Store {
                 conflicts: {
                     title: titleMatch,
                     shortcut: shortcutMatch,
-                    body: matchingBodyPrompt ? matchingBodyPrompt.title : null // Store the title
+                    body: matchingBodyPrompt ? matchingBodyPrompt.title : null
                 }
             };
         });
@@ -296,8 +423,10 @@ export class Store {
             isExcluded: false
         }));
 
-        return { prompts: validatedPrompts, folders: validatedFolders };
+        return { prompts: validatedPrompts, folders: validatedFolders, warnings };
     }
+
+
 
     /**
      * Finalizes the import by merging folder structures and creating new prompts.
@@ -336,7 +465,8 @@ export class Store {
                         name: importedFolder.name,
                         parentId: localParentId,
                         order: this.folders.length,
-                        isExpanded: true
+                        isExpanded: true,
+                        attributes: importedFolder.attributes || {}
                     });
                 }
 
@@ -360,7 +490,10 @@ export class Store {
                 text: p.text,
                 quick: p.quick,
                 tags: [], // Tags removed as per requirement
-                parentId: mappedParentId
+                parentId: mappedParentId,
+                isPinned: p.isPinned || false, // Preserve pin state
+                lastUsed: p.lastUsed,          // Preserve history
+                attributes: p.attributes || {}
             });
         });
 
@@ -435,7 +568,8 @@ export class Store {
             name,
             parentId,
             order: this.folders.length,
-            isExpanded: true
+            isExpanded: true,
+            attributes: {}
         };
         this.folders.push(newFolder);
         await this.saveFolders();
@@ -562,7 +696,8 @@ export class Store {
             text,
             quick,
             tags: tagIds,
-            parentId: parentId // Set parent
+            parentId: parentId, // Set parent
+            attributes: {}
         };
         this.prompts.push(newPrompt);
         await this.savePrompts();
