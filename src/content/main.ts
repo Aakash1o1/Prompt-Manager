@@ -19,6 +19,7 @@ type Settings = {
   hotspotPosition: 'corner' | 'edge';
   hotspotWidthPx: number;
   autoCloseOnHover: boolean;
+  quickMenuLimit: number;
 };
 
 // Constants
@@ -35,7 +36,8 @@ const DEFAULT_SETTINGS: Settings = {
   theme: 'dark',
   hotspotPosition: 'edge',
   hotspotWidthPx: 24,
-  autoCloseOnHover: false
+  autoCloseOnHover: false,
+  quickMenuLimit: 4
 };
 
 function uid() { return (crypto as any).randomUUID?.() ?? Math.random().toString(36).slice(2, 9); }
@@ -165,7 +167,7 @@ async function loadAndInit() {
   store.settings = settings;
   store.folders = folders;
 
-  const expander = new TextExpander(store);
+  const expander = new TextExpander(store, shadow);
   expander.mount();
 
   // 5. Render UI

@@ -1,25 +1,45 @@
-// src/content/components/TextExpander.ts
 import { Store, Prompt } from '../store';
+import { CaretLocator } from '../utils/CaretLocator';
+import { QuickMenu } from './QuickMenu';
 
 export class TextExpander {
     private store: Store;
+    private shadow: ShadowRoot;
+    private menu: QuickMenu;
     private listening: boolean = false;
+    private menuOpen: boolean = false;
 
-    constructor(store: Store) {
+    constructor(store: Store, shadow: ShadowRoot) {
         this.store = store;
+        this.shadow = shadow;
+        this.menu = new QuickMenu(store, shadow, (p) => this.handleSelection(p));
     }
 
     public mount() {
         if (this.listening) return;
         document.addEventListener('keydown', this.handleKeyDown, true);
+        document.addEventListener('mousedown', this.handleOutsideClick, true);
         this.listening = true;
         console.log('TextExpander: Mounted.');
     }
 
     public destroy() {
         document.removeEventListener('keydown', this.handleKeyDown, true);
+        document.removeEventListener('mousedown', this.handleOutsideClick, true);
         this.listening = false;
     }
+
+    private handleOutsideClick = (ev: MouseEvent) => {
+        if (this.menuOpen) {
+            // Check if clicking inside the menu is handled by the menu itself
+            // but for safety, we close it if the click is anywhere else.
+            // Since QuickMenu is appended to shadow, we check the composed path.
+            const path = (ev as any).composedPath?.() || [];
+            if (!path.some((el: any) => el === (this.menu as any).el)) {
+                this.closeMenu();
+            }
+        }
+    };
 
     private handleKeyDown = (ev: KeyboardEvent) => {
         // --- 1. SELF-DESTRUCT CHECK (Fixes duplicate logs during dev) ---
@@ -31,39 +51,102 @@ export class TextExpander {
             return;
         }
 
-        // --- 2. TRIGGER CHECK ---
-        // Only trigger on Space
-        if (ev.key !== ' ' && ev.code !== 'Space') return;
-
         const activeEl = document.activeElement as HTMLElement;
         if (!activeEl) return;
 
-        // Check if editable
-        const isInput = activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA';
-        const isContentEditable = activeEl.isContentEditable;
-        if (!isInput && !isContentEditable) return;
+        // 1. Handle Navigation when menu is open
+        if (this.menuOpen) {
+            if (ev.key === 'ArrowDown') {
+                ev.preventDefault();
+                this.menu.moveSelection('down');
+                return;
+            }
+            if (ev.key === 'ArrowUp') {
+                ev.preventDefault();
+                this.menu.moveSelection('up');
+                return;
+            }
+            if (ev.key === 'Enter') {
+                ev.preventDefault();
+                this.handleSelection(this.menu.getSelectedPrompt());
+                return;
+            }
+            if (ev.key === 'Escape' || ev.key === 'Backspace') {
+                this.closeMenu();
+                // If it was escape, let it propagate if we just closed the menu?
+                // Actually, prevent default if we handled it.
+                if (ev.key === 'Escape') {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                }
+                return;
+            }
+            // Close menu if user continues typing anything else (that isn't a nav key)
+            if (ev.key.length === 1 && ev.key !== ' ') {
+                this.closeMenu();
+            }
+        }
 
-        // --- 3. GET WORD ---
-        const word = this.getWordBeforeCaret(activeEl);
-        if (!word) return;
+        // --- 2. TRIGGER CHECK ---
+        // Only trigger on Space
+        if (ev.key === ' ' || ev.code === 'Space') {
+            // Check if editable
+            const isInput = activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA';
+            const isContentEditable = activeEl.isContentEditable;
+            if (!isInput && !isContentEditable) return;
 
-        const shortcut = word;
+            // --- 3. GET WORD ---
+            const word = this.getWordBeforeCaret(activeEl);
+            if (!word) return;
 
-        // --- 4. FIND MATCH ---
-        // Search the store for a prompt with this quick code
-        const match = this.store.prompts.find(p => p.quick === shortcut);
+            if (word === '../') { // QUICK MENU TRIGGER
+                ev.preventDefault();
+                ev.stopImmediatePropagation();
+                this.openMenu(activeEl);
+                return;
+            }
 
-        if (match) {
-            console.log(`TextExpander: Expanding ".${shortcut}"`);
+            const shortcut = word;
 
-            // Prevent the Space from being typed
-            ev.preventDefault();
-            ev.stopImmediatePropagation();
+            // --- 4. FIND MATCH (Standard Expansion) ---
+            // Search the store for a prompt with this quick code
+            const match = this.store.prompts.find(p => p.quick === shortcut);
 
-            // Perform Replacement
-            this.replaceText(activeEl, word, match.text);
+            if (match) {
+                console.log(`TextExpander: Expanding ".${shortcut}"`);
+
+                // Prevent the Space from being typed
+                ev.preventDefault();
+                ev.stopImmediatePropagation();
+
+                // Record Usage
+                this.store.recordUsage(match.id); // ADD THIS
+
+                // Perform Replacement
+                this.replaceText(activeEl, word, match.text);
+            }
         }
     };
+
+    private openMenu(el: HTMLElement) {
+        const coords = CaretLocator.getCaretCoords(el);
+        this.menu.open(coords);
+        this.menuOpen = true;
+    }
+
+    private closeMenu() {
+        this.menu.close();
+        this.menuOpen = false;
+    }
+
+    private handleSelection(p: Prompt) {
+        const activeEl = document.activeElement as HTMLElement;
+        if (activeEl) {
+            this.replaceText(activeEl, '../', p.text); // Replace the trigger
+            this.store.recordUsage(p.id);
+        }
+        this.closeMenu();
+    }
 
     /**
      * Replaces 'target' (the shortcut) with 'replacement' (the prompt)

@@ -78,6 +78,18 @@ export class SettingsModal extends Component {
                         </label>
                     </div>
 
+                    <!-- Quick Menu Limit -->
+                    <div class="settings-row">
+                        <div style="display:flex; flex-direction:column; gap:2px;">
+                            <label style="color: var(--txt-secondary); font-size: 13px;">Quick Menu Limit</label>
+                            <span style="font-size:11px; color:var(--txt-muted);">Max items shown for "../"</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <input type="range" id="s-quick-limit" min="1" max="6" step="1" style="width: 80px; cursor: pointer;">
+                            <span id="s-quick-limit-val" style="font-size: 13px; font-weight: 600; width: 12px; text-align: center;">4</span>
+                        </div>
+                    </div>
+
                     <!-- TOGGLE: Auto Close -->
                     <div class="settings-row" style="border-bottom: none;">
                         <label style="color: var(--txt-secondary); font-size: 13px;">Auto-close</label>
@@ -137,6 +149,15 @@ export class SettingsModal extends Component {
         this.area?.querySelector('#btn-import-trigger')?.addEventListener('click', () => {
             this.shadow.dispatchEvent(new CustomEvent('open-import-overlay'));
         });
+
+        const limitSlider = this.area?.querySelector('#s-quick-limit') as HTMLInputElement;
+        const limitVal = this.area?.querySelector('#s-quick-limit-val') as HTMLElement;
+
+        if (limitSlider && limitVal) {
+            limitSlider.addEventListener('input', () => {
+                limitVal.textContent = limitSlider.value;
+            });
+        }
     }
 
     private setupSegmentedControl(id: string) {
@@ -162,6 +183,14 @@ export class SettingsModal extends Component {
 
         const theme = this.area?.querySelector('#s-theme') as HTMLInputElement;
         if (theme) theme.checked = s.theme === 'dark';
+
+        const limitSlider = this.area?.querySelector('#s-quick-limit') as HTMLInputElement;
+        const limitVal = this.area?.querySelector('#s-quick-limit-val') as HTMLElement;
+        if (limitSlider && limitVal) {
+            const val = s.quickMenuLimit || 4;
+            limitSlider.value = String(val);
+            limitVal.textContent = String(val);
+        }
     }
 
     private setSegmentActive(containerId: string, dataAttr: string, value: string) {
@@ -217,6 +246,11 @@ export class SettingsModal extends Component {
 
         const theme = this.area?.querySelector('#s-theme') as HTMLInputElement;
         if (theme) updates.theme = theme.checked ? 'dark' : 'light';
+
+        const limitSlider = this.area?.querySelector('#s-quick-limit') as HTMLInputElement;
+        if (limitSlider) {
+            updates.quickMenuLimit = parseInt(limitSlider.value, 10);
+        }
 
         await this.store.updateSettings(updates);
         this.shadow.dispatchEvent(new CustomEvent('apply-settings'));

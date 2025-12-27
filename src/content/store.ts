@@ -37,6 +37,8 @@ export type Prompt = {
     quick?: string;
     tags?: string[];
     parentId?: string | null; // NEW: ID of parent folder, or null for root
+    lastUsed?: number; // ADD THIS: Unix timestamp
+    isPinned?: boolean; // ADD THIS
 };
 
 export type Folder = {
@@ -63,6 +65,7 @@ export type Settings = {
     hotspotPosition: 'corner' | 'edge';
     hotspotWidthPx: number;
     autoCloseOnHover: boolean;
+    quickMenuLimit: number; // ADD THIS: Max items in ../ menu
 };
 
 // --- Constants ---
@@ -79,7 +82,8 @@ const DEFAULT_SETTINGS: Settings = {
     theme: 'dark',
     hotspotPosition: 'edge',
     hotspotWidthPx: 24,
-    autoCloseOnHover: true
+    autoCloseOnHover: true,
+    quickMenuLimit: 4
 };
 
 // --- Helper Functions ---
@@ -481,6 +485,64 @@ export class Store {
 
         // Save everything
         await Promise.all([this.saveFolders(), this.savePrompts()]);
+    }
+
+    // --- Usage Tracking ---
+
+    /**
+     * Updates the lastUsed timestamp for a prompt and persists it.
+     */
+    async recordUsage(id: string) {
+        const idx = this.prompts.findIndex(p => p.id === id);
+        if (idx === -1) return;
+
+        this.prompts[idx].lastUsed = Date.now();
+        // We save silently to avoid re-rendering the whole main list UI immediately
+        await setStorage({ [PROMPTS_KEY]: this.prompts });
+    }
+
+    /**
+     * Toggles the pinned state of a prompt.
+     * Enforces a maximum of 5 pinned items.
+     */
+    async togglePin(id: string) {
+        const p = this.prompts.find(x => x.id === id);
+        if (!p) return;
+
+        if (!p.isPinned) {
+            // Check limit before pinning
+            const currentPinnedCount = this.prompts.filter(x => x.isPinned).length;
+            if (currentPinnedCount >= 5) {
+                throw new Error('Max 5 pinned prompts allowed');
+            }
+            p.isPinned = true;
+        } else {
+            p.isPinned = false;
+        }
+
+        await this.savePrompts();
+    }
+
+    /**
+     * Returns the most recently used prompts based on the user's settings.
+     * Falls back to "random" (first available) prompts if none have been used.
+     */
+    getRecentPrompts(): Prompt[] {
+        const recentsLimit = this.settings.quickMenuLimit || 4;
+        
+        // 1. Get All Pinned Items (Max 5 guaranteed by togglePin)
+        const pinned = this.prompts.filter(p => p.isPinned);
+        
+        // 2. Get Recents (Excluding pinned ones)
+        const others = this.prompts
+            .filter(p => !p.isPinned && p.lastUsed !== undefined)
+            .sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0));
+
+        // 3. Slice Recents based on the setting
+        const recents = others.slice(0, recentsLimit);
+        
+        // 4. Combine: Pinned on Top, Recents below
+        return [...pinned, ...recents];
     }
 
     // --- Prompt Management ---

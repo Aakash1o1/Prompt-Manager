@@ -239,6 +239,11 @@ export class PromptList extends Component {
         const row = this.el('div', 'row');
         row.dataset.id = p.id;
 
+        // Subtle background for pinned rows
+        if (p.isPinned) {
+            row.style.background = 'var(--bg-active, rgba(255,255,255,0.05))';
+        }
+
         // CLICK TO EDIT (New Behavior)
         row.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -246,6 +251,16 @@ export class PromptList extends Component {
         });
 
         const left = this.el('div', 'prompt-left');
+
+        // Pinned Visual Indicator (Icon before title)
+        if (p.isPinned) {
+            const pinIcon = this.el('span', 'pin-icon');
+            pinIcon.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="var(--accent)" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path><line x1="12" y1="17" x2="12" y2="22"></line></svg>`;
+            pinIcon.style.marginRight = '6px';
+            pinIcon.style.display = 'flex';
+            pinIcon.style.alignItems = 'center';
+            left.appendChild(pinIcon);
+        }
 
         // Title
         const label = this.el('div', 'prompt-title', p.title);
@@ -269,8 +284,36 @@ export class PromptList extends Component {
             row.appendChild(badge);
         }
 
-        // Add Copy Button container
+        // Actions container
         const actions = this.el('div', 'row-actions');
+
+        // Pin Button
+        const pinBtn = this.el('button', 'action-btn');
+        pinBtn.title = p.isPinned ? 'Unpin' : 'Pin (Max 5)';
+        if (p.isPinned) {
+            pinBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path><line x1="12" y1="17" x2="12" y2="22"></line></svg>`;
+            pinBtn.style.color = 'var(--accent)';
+        } else {
+            pinBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path><line x1="12" y1="17" x2="12" y2="22"></line></svg>`;
+        }
+
+        pinBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            try {
+                await this.store.togglePin(p.id);
+                // Notification and refresh handled by Store and Subscription
+                this.shadow.dispatchEvent(new CustomEvent('show-toast', { 
+                    detail: { message: p.isPinned ? 'Pinned' : 'Unpinned' } 
+                }));
+            } catch (err: any) {
+                this.shadow.dispatchEvent(new CustomEvent('show-toast', { 
+                    detail: { message: err.message || 'Pin failed' } 
+                }));
+            }
+        });
+        actions.appendChild(pinBtn);
+
+        // Copy Button
         const copyBtn = this.el('button', 'action-btn');
         copyBtn.title = 'Copy Prompt';
         copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
@@ -279,6 +322,7 @@ export class PromptList extends Component {
             e.stopPropagation();
             try {
                 await navigator.clipboard.writeText(p.text);
+                this.store.recordUsage(p.id);
                 this.shadow.dispatchEvent(new CustomEvent('show-toast', { detail: { message: 'Copied' } }));
             } catch {
                 this.shadow.dispatchEvent(new CustomEvent('show-toast', { detail: { message: 'Copy failed' } }));
