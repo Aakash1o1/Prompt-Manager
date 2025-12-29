@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Prompt Drawer — Enable site</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root { --bg:#fff; --muted:#6b7280; --accent:#2563eb; --green:#10b981; --red-bg: #fee2e2; --red-fg: #b91c1c; --radius:8px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { font-family: var(--font-family); padding: 16px; width:380px; color:#111; background:var(--bg); box-sizing: border-box; }
+    h3{ margin:16px 0 8px 0; font-size:18px; color: #1f2937; }
+    h3:first-child { margin-top: 0; }
+    .small{ font-size:13px; color:var(--muted); margin-top:8px; }
+    label{ display:block; margin-top:16px; font-weight:600; color:#374151; font-size: 14px; }
+    input[type="text"]{ width:100%; padding:10px; border-radius:var(--radius); border:1px solid #d1d5db; margin-top:6px; box-sizing:border-box; font-size:14px; }
+    input[type="text"]:focus { border-color: var(--accent); outline: 2px solid transparent; box-shadow: 0 0 0 2px var(--accent); }
+    button#enable { margin-top:24px; padding:10px 12px; border-radius:8px; border: none; background:var(--accent); color:#fff; cursor:pointer; width:100%; font-weight:600; font-size: 14px; }
+
+    /* --- MINIMALIST DROPDOWN DESIGN (APPLIES TO BOTH) --- */
+    .dropdown { margin-top: 16px; position: relative; border: 1px solid #e5e7eb; border-radius: var(--radius); }
+    .dd-toggle { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px; cursor:pointer; background:#fff; user-select:none; border-radius: var(--radius); }
+    .dd-toggle:hover { background: #f9fafb; }
+    .dd-toggle .label { font-weight:600; color:#111; }
+    .dd-chevron { width:18px; height:18px; transform:rotate(0deg); transition:transform .18s ease; }
+    .dd-open .dd-chevron { transform: rotate(180deg); }
+    .hint { font-size:13px; color:var(--muted); margin-left:8px; }
+
+    .dd-list {
+      display: none; /* Initially hidden */
+      padding: 10px;
+      border-top: 1px solid #e5e7eb;
+      background: #f9fafb;
+      border-bottom-left-radius: var(--radius);
+      border-bottom-right-radius: var(--radius);
+    }
+    #popular-sites-list { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+
+    /* Site button styling (for Popular Sites) */
+    .site-button {
+      padding: 10px 6px; border-radius: 6px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; text-align: center;
+      transition: background 0.12s ease, border-color 0.12s ease; font-size: 13px; user-select: none;
+    }
+    .site-button:hover { border-color: #a5b4fc; }
+    .site-selected { background: #dbeafe; border: 1px solid var(--accent); color: #1e40af; }
+    .site-enabled { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; cursor: not-allowed; opacity: 0.8; }
+    .site-enabled:hover { border-color: #bbf7d0; }
+
+    /* List row styling (for Enabled Sites) */
+    .site-row { display:flex; justify-content:space-between; align-items:center; padding:8px 4px; font-size:13px; }
+    .site-row:not(:last-child) { border-bottom: 1px solid #e5e7eb; }
+    .remove-btn { background: var(--red-bg); color: var(--red-fg); border:none; padding:5px 10px; border-radius:6px; cursor:pointer; font-size:12px; font-weight: 600; }
+    .remove-btn:hover { background:#ef4444; color:#fff; }
+    
+    .main-action-btn {
+      width: 100%;
+      text-align: center;
+      margin-top: 16px;
+      padding: 10px;
+      border-radius: 8px;
+      border: none;
+      background: var(--accent); /* Default blue background */
+      color: #fff;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+      transition: background-color 0.15s ease, color 0.15s ease; /* Smooth transition */
+    }
+
+
+
+    button.danger {
+      background: var(--red-bg);
+      color: var(--red-fg);
+      border: 1px solid #fca5a5;
+    }
+    button.danger:hover {
+      background: #dc2626;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <h3>Enabled Sites</h3>
+  <div class="small">Manage sites where the Prompt Drawer is active.</div>
+
+  <div class="dropdown" id="enabled-sites-dropdown">
+    <div class="dd-toggle" id="enabled-sites-toggle" role="button" aria-expanded="false">
+      <div class="label">View Enabled Sites</div>
+      <svg class="dd-chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#374151"><path d="M6 9l6 6 6-6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="dd-list" id="allowed-sites-list">
+      <!-- JS renders enabled sites here -->
+    </div>
+  </div>
+
+  <button id="add-current-site-btn" class="main-action-btn">Add to this site</button>
+
+  <div id="status" class="small"></div>
+
+  <script src="action.js"></script>
+</body>
+</html>

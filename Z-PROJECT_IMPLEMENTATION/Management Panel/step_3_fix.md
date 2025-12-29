@@ -1,9 +1,23 @@
+Step 4_Fix: Styling & Settings Application
+Objective:
+Fix Sidebar positioning context so the dropdown stays inside the sidebar.
+Refactor CSS to use var(--font-size) instead of hardcoded pixels.
+Update App.ts to listen to settings changes and apply the font size dynamically.
+Files to Modify:
+src/content/styles.ts (Add position: relative, use CSS vars)
+src/content/components/App.ts (Apply settings to DOM)
+Tasks:
+1. Update Styles (src/content/styles.ts)
+Replace the entire file content with this updated version.
+Changes: Added position: relative to .sidebar. Added --font-size variable. Applied variable to tree rows, inputs, and editor. Adjusted Dropdown top.
+code
+TypeScript
 // src/content/styles.ts
 export const STYLES = `
 /* --- VARIABLES --- */
 :host {
   all: initial;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
   
   /* --- PALETTE (Zinc Dark Mode) --- */
   --bg-app: #09090b;       /* Zinc-950: Main Modal Background */
@@ -37,20 +51,9 @@ export const STYLES = `
 * {
   box-sizing: border-box;
   scrollbar-width: none;
-  font-family: inherit;
 }
 *::-webkit-scrollbar {
   display: none;
-}
-
-/* Hide number input arrows */
-input::-webkit-outer-spin-button,
-input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-input[type=number] {
-  -moz-appearance: textfield;
 }
 
 /* --- BACKDROP --- */
@@ -179,42 +182,21 @@ input[type=number] {
 .tree-row:hover .row-icon { color: var(--txt-secondary); }
 
 .row-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-shortcut {
-  font-size: 11px;
-  color: var(--txt-muted);
-  margin-left: 8px;
-  margin-right: 4px;
-  font-family: 'JetBrains Mono', Consolas, monospace;
-}
 
 /* Kebab & Actions */
 .row-actions { display: none; margin-left: auto; gap: 4px; }
 .tree-row:hover .row-actions { display: flex; }
 
 .icon-btn {
-  padding: 6px;
-  border-radius: 6px;
+  padding: 4px;
+  border-radius: 4px;
   color: var(--txt-muted);
   cursor: pointer;
   background: transparent;
   border: none;
   display: flex;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.icon-btn:hover { 
-  background: var(--bg-hover); 
-  color: var(--txt-primary);
-  transform: translateY(-1px);
-}
-.icon-btn:active {
-  transform: translateY(0);
-}
-
-button {
-  cursor: pointer;
-  font-family: inherit;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
+.icon-btn:hover { background: rgba(255,255,255,0.1); color: var(--txt-primary); }
 
 .sb-footer {
   height: 48px;
@@ -226,74 +208,20 @@ button {
   flex-shrink: 0;
 }
 
-/* --- BUTTONS --- */
 .btn-new {
-  background: linear-gradient(180deg, #4f46e5 0%, #3b82f6 100%);
-  color: white;
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 8px;
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1);
-}
-.btn-new:hover { 
-  filter: brightness(1.1);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
-}
-
-.btn-primary {
   background: var(--accent);
   color: white;
   border: none;
   border-radius: 6px;
-  padding: 8px 16px;
-  font-size: 13px;
+  padding: 6px 12px;
+  font-size: 12px;
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
-.btn-primary:hover { 
-  filter: brightness(1.1);
-  transform: translateY(-1px);
-}
-
-.btn-secondary {
-  background: var(--bg-hover);
-  color: var(--txt-primary);
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 500;
-}
-.btn-secondary:hover { 
-  background: var(--bg-active);
-  border-color: var(--border-default);
-}
-
-.btn-ghost {
-  background: transparent;
-  color: var(--txt-secondary);
-  border: none;
-  border-radius: 6px;
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 500;
-}
-.btn-ghost:hover { 
-  background: var(--bg-hover);
-  color: var(--txt-primary);
-}
-
-.btn-small {
-  padding: 4px 10px;
-  font-size: 11px;
-}
+.btn-new:hover { filter: brightness(1.1); }
 
 /* --- MAGIC DROPDOWN --- */
 .magic-dropdown {
@@ -381,7 +309,7 @@ button {
   border: none;
   color: var(--txt-primary);
   padding: 24px;
-  font-family: inherit;
+  font-family: 'JetBrains Mono', Consolas, monospace;
   font-size: var(--font-size); /* FIX 2 */
   line-height: 1.6;
   outline: none;
@@ -488,56 +416,6 @@ input:checked + .toggle-switch::after { transform: translateX(20px); }
 .backup-icon { font-size: 24px; }
 .backup-title { font-weight: 600; font-size: 14px; }
 
-/* --- MOVE MODE --- */
-.sidebar.mode-move .sb-header {
-  background: var(--bg-active);
-  border-bottom-color: var(--accent);
-}
-
-.sidebar.mode-move .tree-row[data-type="prompt"] {
-  opacity: 0.3;
-  pointer-events: none; /* Disable clicking prompts in move mode */
-}
-
-.sidebar.mode-move .tree-row[data-type="folder"]:hover {
-  background: rgba(59, 130, 246, 0.1); /* Light blue hover */
-  color: var(--accent);
-}
-
-.sidebar.mode-move .tree-row.destination {
-  background: var(--accent);
-  color: white;
-}
-.sidebar.mode-move .tree-row.destination .row-icon {
-  color: white;
-}
-
-/* Hide standard controls in move mode */
-.sidebar.mode-move .sb-search-wrapper,
-.sidebar.mode-move #btn-magic,
-.sidebar.mode-move #btn-settings,
-.sidebar.mode-move #btn-new-root {
-  display: none !important;
-}
-
-/* Show move controls (hidden by default) */
-.sb-move-title { display: none; font-weight: 600; font-size: 13px; color: var(--txt-primary); }
-.sidebar.mode-move .sb-move-title { display: block; }
-
-.sb-move-actions { display: none; gap: 8px; width: 100%; justify-content: flex-end; }
-.sidebar.mode-move .sb-move-actions { display: flex; }
-
-.btn-small {
-  padding: 6px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  cursor: pointer;
-  border: none;
-  font-weight: 500;
-}
-.btn-secondary { background: var(--bg-hover); color: var(--txt-primary); }
-.btn-secondary:hover { background: var(--border-default); }
-
 /* --- TOAST --- */
 .toast {
     position: fixed;
@@ -560,207 +438,140 @@ input:checked + .toggle-switch::after { transform: translateX(20px); }
     text-align: center;
 }
 .toast.show { opacity: 1; }
-
-/* --- RESIZE HANDLES --- */
-.resize-handle {
-  position: absolute;
-  z-index: 100;
-  opacity: 0; /* Invisible but clickable */
-}
-.resize-handle:hover { background: rgba(59,130,246,0.3); opacity: 1; }
-
-.resize-handle.e, .resize-handle.w { width: 8px; height: 100%; top: 0; cursor: ew-resize; }
-.resize-handle.n, .resize-handle.s { height: 8px; width: 100%; left: 0; cursor: ns-resize; }
-
-.resize-handle.e { right: -4px; }
-.resize-handle.w { left: -4px; }
-.resize-handle.n { top: -4px; }
-.resize-handle.s { bottom: -4px; }
-
-.resize-handle.se { width: 16px; height: 16px; bottom: -8px; right: -8px; cursor: nwse-resize; z-index: 101; }
-.resize-handle.sw { width: 16px; height: 16px; bottom: -8px; left: -8px; cursor: nesw-resize; z-index: 101; }
-.resize-handle.ne { width: 16px; height: 16px; top: -8px; right: -8px; cursor: nesw-resize; z-index: 101; }
-.resize-handle.nw { width: 16px; height: 16px; top: -8px; left: -8px; cursor: nwse-resize; z-index: 101; }
-
-/* --- UNCATEGORIZED GROUP --- */
-.uncategorized-header {
-  padding: 12px 12px 4px 12px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--txt-muted);
-  margin-top: 8px;
-  border-top: 1px solid var(--bg-hover);
-  user-select: none;
-}
-
-/* Move Mode: Uncategorized acts as a target */
-.sidebar.mode-move .uncategorized-header {
-  cursor: pointer;
-  border: 1px dashed var(--border-default);
-  margin: 8px;
-  border-radius: 6px;
-  text-align: center;
-  padding: 8px;
-  background: rgba(59, 130, 246, 0.05);
-}
-.sidebar.mode-move .uncategorized-header:hover {
-  background: rgba(59, 130, 246, 0.1);
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.sidebar.mode-move .uncategorized-header.selected {
-  background: var(--accent);
-  color: white;
-  border-style: solid;
-}
-
-/* --- UPDATED MOVE MODE COLORS --- */
-/* 1. All valid folders get Light Blue */
-.sidebar.mode-move .tree-row[data-type="folder"] {
-  background: rgba(59, 130, 246, 0.1); /* Light Blue */
-  color: var(--txt-primary);
-  margin-bottom: 1px;
-}
-
-/* 2. Hover effect */
-.sidebar.mode-move .tree-row[data-type="folder"]:hover {
-  background: rgba(59, 130, 246, 0.2); 
-}
-
-/* 3. Selected Target gets Dark Blue */
-.sidebar.mode-move .tree-row.destination {
-  background: var(--accent) !important;
-  color: white !important;
-}
-.sidebar.mode-move .tree-row.destination .row-icon {
-  color: white !important;
-}
-
-/* --- IMPORT/EXPORT MODES --- */
-.sb-selection-toggles {
-  font-size: 11px;
-  color: var(--txt-muted);
-  margin-top: 4px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.sb-select-all-label {
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  user-select: none;
-}
-.sb-select-all-label:hover {
-  color: var(--txt-primary);
-}
-
-.sb-checkbox {
-  margin-right: 8px;
-  cursor: pointer;
-  accent-color: var(--accent);
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-right: 8px;
-  flex-shrink: 0;
-}
-.status-dot.green { background: #10b981; }
-.status-dot.red { background: var(--danger); box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2); }
-.status-dot.amber { background: #f59e0b; }
-
-/* Export mode: selected rows */
-.sidebar.mode-export .tree-row.selected {
-  background: rgba(59, 130, 246, 0.15);
-}
-
-/* Show mode titles/actions in export/import */
-.sidebar.mode-export .sb-move-title,
-.sidebar.mode-import .sb-move-title { display: block; }
-.sidebar.mode-export .sb-move-actions,
-.sidebar.mode-import .sb-move-actions { display: flex; }
-.sidebar.mode-export .sb-search-wrapper,
-.sidebar.mode-export #btn-magic,
-.sidebar.mode-export #btn-settings,
-.sidebar.mode-export #btn-new-root,
-.sidebar.mode-import .sb-search-wrapper,
-.sidebar.mode-import #btn-magic,
-.sidebar.mode-import #btn-settings,
-.sidebar.mode-import #btn-new-root { display: none !important; }
-
-/* --- WORKSPACE CODE BLOCK --- */
-.ws-code-block {
-  background: var(--bg-hover);
-  padding: 16px;
-  border-radius: 8px;
-  font-family: 'JetBrains Mono', Consolas, monospace;
-  font-size: 12px;
-  color: var(--txt-secondary);
-  overflow: auto;
-  max-height: 400px;
-  white-space: pre-wrap;
-  border: 1px solid var(--border-subtle);
-}
-
-/* --- WORKSPACE INPUT VALIDATION --- */
-.ws-input.error, .ws-title-input.error {
-  border-color: var(--danger) !important;
-  background: rgba(239, 68, 68, 0.05);
-}
-.ws-input.success, .ws-title-input.success {
-  border-color: #10b981 !important;
-}
-.validation-msg {
-  font-size: 11px;
-  margin-top: 4px;
-  margin-left: 2px;
-  display: block;
-}
-.validation-msg.error { color: var(--danger); }
-.validation-msg.warning { color: #f59e0b; }
-
-/* Read-only inputs for Preview */
-.ws-title-input:read-only,
-.ws-input:read-only,
-.ws-editor-body:read-only {
-  cursor: default;
-  opacity: 0.8;
-}
-.ws-editor-body:read-only { user-select: text; }
-
-/* --- WORKSPACE CONFLICT/SAFE BOXES --- */
-.conflict-box {
-  border: 1px solid var(--danger);
-  background: rgba(239, 68, 68, 0.05);
-  padding: 16px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-}
-.conflict-title {
-  color: var(--danger);
-  font-weight: 700;
-  font-size: 12px;
-  margin-bottom: 8px;
-  text-transform: uppercase;
-}
-.safe-box {
-  border: 1px solid #10b981;
-  background: rgba(16, 185, 129, 0.05);
-  padding: 16px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-}
-.safe-title {
-  color: #10b981;
-  font-weight: 700;
-  font-size: 12px;
-  margin-bottom: 8px;
-  text-transform: uppercase;
-}
 `;
+2. Update App.ts (src/content/components/App.ts)
+Implement applySettings to push the font size to the DOM.
+code
+TypeScript
+// src/content/components/App.ts
+import { Component } from './Component';
+import { Store } from '../store';
+import { TextExpander } from './TextExpander'; 
+import { Sidebar } from './Sidebar'; 
+import { Workspace } from './Workspace'; 
+
+export class App extends Component {
+    private backdrop: HTMLElement | null = null;
+    private modal: HTMLElement | null = null;
+    private toastEl: HTMLElement | null = null;
+    private toastTimer: number | null = null;
+
+    private host: HTMLElement;
+    private sidebar: Sidebar;
+    private workspace: Workspace;
+
+    constructor(store: Store, shadow: ShadowRoot, host: HTMLElement) {
+        super(store, shadow);
+        this.host = host;
+        this.sidebar = new Sidebar(store, shadow);
+        this.workspace = new Workspace(store, shadow);
+    }
+
+    mount(parent: HTMLElement) { 
+        this.backdrop = this.shadow.getElementById('backdrop');
+        this.modal = this.shadow.getElementById('modal');
+        this.toastEl = this.shadow.getElementById('toast');
+
+        if (!this.backdrop || !this.modal) return;
+
+        this.setupListeners();
+        this.applySettings(); // APPLY ON LOAD
+
+        this.sidebar.mount(this.modal);
+        this.workspace.mount(this.modal); 
+
+        console.log('App: Components Mounted.');
+    }
+
+    // NEW: Apply Store Settings to CSS Variables
+    private applySettings() {
+        const s = this.store.settings;
+        // Apply Font Size
+        this.host.style.setProperty('--font-size', `${s.fontSizePx || 13}px`);
+        
+        // Future: Apply Theme here if using attribute-based theme switching
+        // this.host.setAttribute('data-theme', s.theme || 'dark');
+    }
+
+    private setupListeners() {
+        this.backdrop?.addEventListener('click', (e) => {
+            if (e.target === this.backdrop) this.close();
+        });
+        document.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape' && this.backdrop?.classList.contains('open')) {
+                ev.preventDefault();
+                this.close();
+            }
+        });
+        this.shadow.addEventListener('show-toast', ((e: CustomEvent) => {
+            this.showToast(e.detail.message);
+        }) as EventListener);
+
+        this.shadow.addEventListener('workspace-open-prompt', ((e: CustomEvent) => {
+            this.workspace.openEditor(e.detail.promptId);
+        }) as EventListener);
+
+        this.shadow.addEventListener('workspace-new-prompt', ((e: CustomEvent) => {
+            this.workspace.openEditor(null, e.detail.parentId);
+        }) as EventListener);
+
+        this.shadow.addEventListener('workspace-settings', () => {
+            this.workspace.openSettings();
+        });
+
+        // NEW: Subscribe to settings changes
+        this.store.subscribe('settings_updated', () => {
+            this.applySettings();
+        });
+
+        // Export/Import Placeholders
+        this.shadow.addEventListener('workspace-mode-export', () => {
+            console.log("TODO: Switch to Export Mode (Step 6)");
+            this.showToast("Export Mode coming in Step 6");
+        });
+        this.shadow.addEventListener('workspace-mode-import', () => {
+            console.log("TODO: Switch to Import Mode (Step 6)");
+            this.showToast("Import Mode coming in Step 6");
+        });
+    }
+
+    // ... (rest of class: toggle, open, close, showToast, destroy) ...
+    public toggle() {
+        if (this.backdrop?.classList.contains('open')) {
+            this.close();
+        } else {
+            this.open();
+        }
+    }
+
+    public open() {
+        this.backdrop?.classList.add('open');
+        this.host.style.pointerEvents = 'auto';
+    }
+
+    public close() {
+        this.backdrop?.classList.remove('open');
+        this.host.style.pointerEvents = 'none';
+    }
+
+    public openWithText(text: string) {
+        this.open();
+        console.log("TODO: Open with text:", text);
+    }
+
+    public destroy() {
+        this.host.remove();
+        (window as any).__promptManagerInitialized = false;
+    }
+
+    private showToast(msg: string) {
+        if (!this.toastEl) return;
+        this.toastEl.textContent = msg;
+        this.toastEl.classList.add('show');
+        if (this.toastTimer) clearTimeout(this.toastTimer);
+        this.toastTimer = window.setTimeout(() => {
+            if (this.toastEl) this.toastEl.classList.remove('show');
+            this.toastTimer = null;
+        }, 1400);
+    }
+}

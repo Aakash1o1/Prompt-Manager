@@ -42,11 +42,15 @@ export class TextExpander {
     };
 
     private handleKeyDown = (ev: KeyboardEvent) => {
-        // --- 1. SELF-DESTRUCT CHECK (Fixes duplicate logs during dev) ---
-        // If the extension context is invalidated (reloaded), stop listening.
+        // --- 1. CRITICAL: SELF-DESTRUCT CHECK ---
+        // If the extension has been reloaded, chrome.runtime.id might be invalid 
+        // or the connection broken. We MUST stop listening to avoid ghost errors.
         try {
-            if (!chrome.runtime.id) throw new Error();
+            if (!chrome.runtime?.id) {
+                throw new Error("Extension context invalidated");
+            }
         } catch (e) {
+            // Context is dead. Remove listeners and stop.
             this.destroy();
             return;
         }
@@ -73,33 +77,31 @@ export class TextExpander {
             }
             if (ev.key === 'Escape' || ev.key === 'Backspace') {
                 this.closeMenu();
-                // If it was escape, let it propagate if we just closed the menu?
-                // Actually, prevent default if we handled it.
                 if (ev.key === 'Escape') {
                     ev.preventDefault();
                     ev.stopPropagation();
                 }
                 return;
             }
-            // Close menu if user continues typing anything else (that isn't a nav key)
-            if (ev.key.length === 1 && ev.key !== ' ') {
+            if (ev.key === ' ' || ev.code === 'Space') {
+                this.closeMenu();
+                return;
+            }
+            if (ev.key.length === 1) {
                 this.closeMenu();
             }
         }
 
         // --- 2. TRIGGER CHECK ---
-        // Only trigger on Space
         if (ev.key === ' ' || ev.code === 'Space') {
-            // Check if editable
             const isInput = activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA';
             const isContentEditable = activeEl.isContentEditable;
             if (!isInput && !isContentEditable) return;
 
-            // --- 3. GET WORD ---
             const word = this.getWordBeforeCaret(activeEl);
             if (!word) return;
 
-            if (word === '../') { // QUICK MENU TRIGGER
+            if (word === '../') { 
                 ev.preventDefault();
                 ev.stopImmediatePropagation();
                 this.openMenu(activeEl);
@@ -107,22 +109,12 @@ export class TextExpander {
             }
 
             const shortcut = word;
-
-            // --- 4. FIND MATCH (Standard Expansion) ---
-            // Search the store for a prompt with this quick code
             const match = this.store.prompts.find(p => p.quick === shortcut);
 
             if (match) {
-                console.log(`TextExpander: Expanding ".${shortcut}"`);
-
-                // Prevent the Space from being typed
                 ev.preventDefault();
                 ev.stopImmediatePropagation();
-
-                // Record Usage
-                this.store.recordUsage(match.id); // ADD THIS
-
-                // Perform Replacement
+                this.store.recordUsage(match.id);
                 this.replaceText(activeEl, word, match.text);
             }
         }
@@ -152,80 +144,132 @@ export class TextExpander {
      * Replaces 'target' (the shortcut) with 'replacement' (the prompt)
      * inside the element, handling both Input and ContentEditable.
      */
+
+// src/content/components/TextExpander.ts
+
+    /**
+     * Replaces 'target' (the shortcut) with 'replacement' (the prompt).
+     * OPTIMIZED: Uses native browser commands for speed and formatting compatibility.
+     */
     private replaceText(el: HTMLElement, target: string, replacement: string) {
-        // A. Handle <input> / <textarea>
+        // 1. Handle <input> and <textarea>
+        // These are simple: we calculate positions and manipulate the string directly.
         if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
             const input = el as HTMLInputElement | HTMLTextAreaElement;
             const start = input.selectionStart || 0;
             const end = input.selectionEnd || 0;
 
-            // Calculate where the shortcut starts
-            // (Assumes the cursor is immediately after the shortcut)
             const replaceStart = start - target.length;
 
             if (replaceStart >= 0) {
-                // Use setRangeText to preserve undo history in some browsers
-                input.setRangeText(replacement, replaceStart, start, 'end');
+                // Determine new cursor position
+                const newCursorPos = replaceStart + replacement.length;
 
-                // Critical: Fire events so frameworks (React/Angular) detect change
+                // Native replacement (preserves Undo history in most browsers)
+                // 'select' mode keeps text selected, 'end' moves cursor to end.
+                // We use setRangeText to be safe, then set cursor manually.
+                input.setRangeText(replacement, replaceStart, start, 'end');
+                
+                // Fire events so frameworks (React/Vue) detect the change
                 this.triggerEvents(input);
             }
-        }
-        // B. Handle ContentEditable (Divs, Rich Text)
+        } 
+        
+        // 2. Handle contentEditable (Rich Text Editors like Gmail, ChatGPT, Notion)
         else {
             const sel = window.getSelection();
             if (!sel || sel.rangeCount === 0) return;
 
             const range = sel.getRangeAt(0);
-            const node = range.startContainer; // The text node we are in
-
-            // We need to operate on the text node data
-            if (node.nodeType === Node.TEXT_NODE && node.textContent) {
-                const text = node.textContent;
-                const offset = range.startOffset;
-                const replaceStart = offset - target.length;
-
-                if (replaceStart >= 0) {
-                    // 1. Delete the shortcut text
-                    range.setStart(node, replaceStart);
-                    range.setEnd(node, offset);
+            
+            // Step A: Remove the shortcut text ("../")
+            // We adjust the range to cover the shortcut characters before the cursor
+            try {
+                // Move start pointer back by the length of the shortcut
+                if (range.startContainer.nodeType === Node.TEXT_NODE) {
+                    const startOffset = Math.max(0, range.startOffset - target.length);
+                    range.setStart(range.startContainer, startOffset);
                     range.deleteContents();
-
-                    // 2. Insert the new text handling newlines
-                    const lines = replacement.split(/\r?\n/);
-                    const fragment = document.createDocumentFragment();
-                    let lastNode: Node | null = null;
-
-                    lines.forEach((line, index) => {
-                        if (index > 0) {
-                            const br = document.createElement('br');
-                            fragment.appendChild(br);
-                            lastNode = br;
-                        }
-                        if (line) {
-                            const textNode = document.createTextNode(line);
-                            fragment.appendChild(textNode);
-                            lastNode = textNode;
-                        }
-                    });
-
-                    // 3. Insert and position caret
-                    if (lastNode) {
-                        range.insertNode(fragment);
-                        range.setStartAfter(lastNode);
-                        range.setEndAfter(lastNode);
-                    } else {
-                        // Edge case: empty replacement
-                        range.collapse(true);
-                    }
-
-                    sel.removeAllRanges();
-                    sel.addRange(range);
-
-                    // Critical: Fire events
-                    this.triggerEvents(el);
+                } else {
+                    // Complex DOM case: Fallback to simple backspace simulation logic isn't possible 
+                    // via API, so we rely on the user having typed it sequentially.
+                    // If we can't delete cleanly, we proceed to insert anyway.
                 }
+            } catch (e) {
+                console.warn("Could not cleanly delete shortcut text", e);
             }
+
+            // Step B: Insert the Prompt using execCommand
+            // This is the "Magic Bullet". It inserts text at the cursor position
+            // and lets the browser handle formatting (newlines -> <br> or <p>).
+            
+            el.focus(); // Focus is required for execCommand
+            
+            // 'insertText' handles newlines correctly for the specific editor
+            const success = document.execCommand('insertText', false, replacement);
+
+            // Step C: Fallback for sites blocking execCommand
+            if (!success) {
+                // If execCommand failed, we insert a raw text node. 
+                // This is faster than the previous loop but might lose newline formatting
+                // depending on the editor's CSS (white-space: pre-wrap).
+                const textNode = document.createTextNode(replacement);
+                range.insertNode(textNode);
+                
+                // Move cursor to end
+                range.setStartAfter(textNode);
+                range.setEndAfter(textNode);
+                sel.removeAllRanges();
+                sel.addRange(range);
+                
+                this.triggerEvents(el);
+            }
+        }
+    }
+
+
+
+
+
+    private manualInsertFallback(el: HTMLElement, target: string, replacement: string) {
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) return;
+
+        const range = sel.getRangeAt(0);
+        const node = range.startContainer;
+
+        if (node.nodeType === Node.TEXT_NODE && node.textContent) {
+            const offset = range.startOffset;
+            const replaceStart = Math.max(0, offset - target.length);
+
+            range.setStart(node, replaceStart);
+            range.setEnd(node, offset);
+            range.deleteContents();
+
+            const lines = replacement.split(/\r?\n/);
+            const fragment = document.createDocumentFragment();
+            let lastNode: Node | null = null;
+
+            lines.forEach((line, index) => {
+                if (index > 0) {
+                    const br = document.createElement('br');
+                    fragment.appendChild(br);
+                    lastNode = br;
+                }
+                if (line) {
+                    const textNode = document.createTextNode(line);
+                    fragment.appendChild(textNode);
+                    lastNode = textNode;
+                }
+            });
+
+            if (lastNode) {
+                range.insertNode(fragment);
+                range.setStartAfter(lastNode);
+                range.setEndAfter(lastNode);
+            }
+            sel.removeAllRanges();
+            sel.addRange(range);
         }
     }
 

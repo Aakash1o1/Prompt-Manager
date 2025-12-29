@@ -205,33 +205,43 @@ export class Store {
 
     async load() {
         try {
-            const p = await getStorage<Prompt[]>(PROMPTS_KEY);
-            this.prompts = Array.isArray(p) ? p : [];
+            // 1. Get Raw Data
+            const rawPrompts = await getStorage<Prompt[]>(PROMPTS_KEY) || [];
+            const rawFolders = await getStorage<Folder[]>(FOLDERS_KEY) || [];
+            const rawSettings = await getStorage<Settings>(SETTINGS_KEY) || DEFAULT_SETTINGS;
+            
+            // 2. Construct a Temporary Backup Object to feed into Migration
+            // We fake a "BackupData" object so we can reuse our migration logic
+            const rawData: BackupData = {
+                metadata: { 
+                    // If they have no version saved, assume 0 or 1
+                    schemaVersion: (await getStorage<number>('schema_version')) || 1, 
+                    timestamp: new Date().toISOString(), 
+                    itemCount: rawPrompts.length 
+                },
+                prompts: rawPrompts,
+                folders: rawFolders
+            };
 
-            // Ensure every prompt has a valid parentId (null if missing)
-            let needsSave = false;
-            this.prompts.forEach(prompt => {
-                if (prompt.parentId === undefined) {
-                    prompt.parentId = null;
-                    needsSave = true;
-                }
-            });
-            // If we found old data, save the cleaned version immediately
-            if (needsSave) {
+            // 3. RUN THE PIPELINE (The Fix)
+            const migratedData = this.migrateData(rawData);
+
+            // 4. Update State
+            this.prompts = migratedData.prompts;
+            this.folders = migratedData.folders;
+            this.settings = rawSettings;
+            this.tags = await getStorage<Tag[]>(TAGS_KEY) || [];
+
+            // 5. Save the Upgraded Data Back to Storage immediately
+            // This ensures next time load() runs, it's already v2
+            if (rawData.metadata.schemaVersion < CURRENT_SCHEMA_VERSION) {
+                console.log("Upgrading local storage to v" + CURRENT_SCHEMA_VERSION);
                 await this.savePrompts();
+                await this.saveFolders();
+                await setStorage({ 'schema_version': CURRENT_SCHEMA_VERSION });
             }
-            // --------------------------------------
 
-            // NEW: Load Folders
-            const f = await getStorage<Folder[]>(FOLDERS_KEY);
-            this.folders = Array.isArray(f) ? f : [];
-
-            const s = await getStorage<Settings>(SETTINGS_KEY);
-            this.settings = s ? s : DEFAULT_SETTINGS;
-
-            const t = await getStorage<Tag[]>(TAGS_KEY);
-            this.tags = Array.isArray(t) ? t : [];
-
+            // 6. Handle First Install Defaults
             if (this.prompts.length === 0 && this.tags.length === 0) {
                 await this.initializeDefaults();
             }
@@ -239,12 +249,14 @@ export class Store {
             this.notify('loaded');
             this.notify('prompts_updated');
             this.notify('tags_updated');
-            this.notify('folders_updated'); // NEW notification
+            this.notify('folders_updated');
             this.notify('settings_updated');
+
         } catch (e) {
             console.error('Store: Failed to load data', e);
         }
     }
+
 
     private async initializeDefaults() {
         console.log('Store: Initializing default data...');
@@ -398,12 +410,27 @@ export class Store {
             }
         }
 
-        // 6. Prompt Validation & Conflict Detection (Existing Logic)
+        // 6. Prompt Validation & Conflict Detection
+        const batchTitles = new Set<string>();
+        const batchShortcuts = new Set<string>();
+
         const validatedPrompts: ValidatedPrompt[] = data.prompts.map(incoming => {
-            const titleMatch = this.prompts.some(p => p.title.trim().toLowerCase() === incoming.title.trim().toLowerCase());
-            const shortcutMatch = incoming.quick 
-                ? this.prompts.some(p => p.quick?.trim().toLowerCase() === incoming.quick?.trim().toLowerCase()) 
+            const normalizedTitle = incoming.title.trim().toLowerCase();
+            const normalizedQuick = incoming.quick ? incoming.quick.trim().toLowerCase() : null;
+
+            // Check against Local Store
+            let titleMatch = this.prompts.some(p => p.title.trim().toLowerCase() === normalizedTitle);
+            let shortcutMatch = normalizedQuick 
+                ? this.prompts.some(p => p.quick?.trim().toLowerCase() === normalizedQuick) 
                 : false;
+            
+            // Check against Current Batch (Internal Duplicates)
+            if (batchTitles.has(normalizedTitle)) titleMatch = true;
+            if (normalizedQuick && batchShortcuts.has(normalizedQuick)) shortcutMatch = true;
+
+            // Add to Batch Sets for next iteration
+            batchTitles.add(normalizedTitle);
+            if (normalizedQuick) batchShortcuts.add(normalizedQuick);
             
             const matchingBodyPrompt = this.prompts.find(p => p.text.trim() === incoming.text.trim());
 
@@ -812,9 +839,12 @@ export class Store {
         if (folder) {
             folder.isExpanded = !folder.isExpanded;
             this.notify('folders_updated');
-            // Optional: If you want to persist open/closed state across reloads,
-            // call this.saveFolders() here. For now, in-memory is faster.
         }
+    }
+
+    setAllFoldersExpansion(isExpanded: boolean) {
+        this.folders.forEach(f => f.isExpanded = isExpanded);
+        this.notify('folders_updated');
     }
 
     // --- Tag Reordering Logic ---

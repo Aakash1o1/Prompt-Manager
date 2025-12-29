@@ -2,24 +2,13 @@
 import { Store } from './store';
 import { App } from './components/App';
 
-type Settings = {
-  popupHeightVh: number;
-  popupWidthPx: number;
-  fontFamily: string;
-  fontSizePx: number;
-  theme: 'light' | 'dark';
-  hotspotPosition: 'corner' | 'edge';
-  hotspotWidthPx: number;
-  autoCloseOnHover: boolean;
-};
-
 export async function renderUI(opts: {
   host: HTMLElement;
   shadow: ShadowRoot;
   prompts: any[];
   tags: any[];
   folders: any[];
-  settings: Settings;
+  settings: any;
   PROMPTS_KEY: string;
   SETTINGS_KEY: string;
   TAGS_KEY: string;
@@ -27,12 +16,10 @@ export async function renderUI(opts: {
 }) {
   const { host, shadow, prompts, tags, folders, settings } = opts;
 
-  // Guard against null host (if createOrGetHost returned null)
   if (!host || !shadow) return;
 
-  // Initialize Store
   const store = new Store();
-  (window as any).debugStore = store; // Expose for debugging
+  (window as any).debugStore = store; 
 
   store.prompts = prompts;
   store.tags = tags;
@@ -41,24 +28,19 @@ export async function renderUI(opts: {
 
   // Initialize App
   const app = new App(store, shadow, host);
-  app.mount(shadow as any);
+  app.mount(host); // Pass host, though App looks up internal elements
 
-  // --- MESSAGE LISTENER ---
+  // Message Listeners (Keep existing logic)
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    // console.log("Prompt Drawer: Message received", msg); 
-
     if (msg.type === 'TOGGLE_POPUP') {
       app.toggle();
       sendResponse({ ok: true });
     }
-
     if (msg.type === 'OPEN_WITH_TEXT') {
       app.openWithText(msg.text || '');
       sendResponse({ ok: true });
     }
-
     if (msg.type === 'PERMISSION_REMOVED' && msg.pattern) {
-      // Check if current URL matches the removed pattern
       const currentUrl = window.location.href;
       const origin = msg.pattern.replace(/\/\*$/, '');
       if (currentUrl.startsWith(origin)) {
@@ -68,5 +50,5 @@ export async function renderUI(opts: {
     return true;
   });
 
-  console.log('Prompt Manager UI initialized');
+  console.log('Prompt Manager UI initialized (V2 Architecture)');
 }

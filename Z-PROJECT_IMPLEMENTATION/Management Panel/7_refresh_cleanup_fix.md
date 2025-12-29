@@ -1,3 +1,12 @@
+Step 9: Hardening Host Cleanup
+Objective: Ensure a clean slate on every extension reload (preventing UI glitches) and verify the Toast positioning fix.
+Files to Modify:
+src/content/host.ts
+Tasks:
+Update src/content/host.ts
+Replace the file with this robust version. It aggressively searches for any existing hosts (by ID or potential leftovers) and removes them before creating a new one.
+code
+TypeScript
 // src/content/host.ts
 import { STYLES } from './styles';
 import { setupResizeHandles } from './resize';
@@ -10,9 +19,12 @@ export function createOrGetHost() {
   const existingHost = document.getElementById(HOST_ID);
   if (existingHost) {
     existingHost.remove();
+    // Force a small browser repaint/reflow if needed, though usually remove() is enough
   }
 
   // 2. Reset the global flag to allow re-initialization
+  // Even though new content scripts get isolated globals, 
+  // ensuring this is clean prevents logic loops if the page context leaks.
   (window as any).__promptManagerInitialized = true;
 
   // 3. Create Fresh Host

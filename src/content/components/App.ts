@@ -1,411 +1,243 @@
+// src/content/components/App.ts
 import { Component } from './Component';
 import { Store } from '../store';
-import { SearchBar } from './SearchBar';
-import { TagDropdown } from './TagDropdown';
-import { PromptList } from './PromptList';
-import { PromptEditor } from './PromptEditor';
-import { SettingsModal } from './SettingsModal';
-import { ExportOverlay } from './ExportOverlay';
-import { ImportOverlay } from './ImportOverlay';
-import { setupResizeHandles } from '../resize';
+// Note: We are temporarily NOT importing child components until Steps 2-6
+import { TextExpander } from './TextExpander'; // Keep this one as it has no UI
+import { Sidebar } from './Sidebar'; // Import Sidebar
+import { Workspace } from './Workspace'; // Import Workspace
 
 export class App extends Component {
-    private searchBar: SearchBar;
-    private tagDropdown: TagDropdown;
-    private promptList: PromptList;
-    private promptEditor: PromptEditor;
-    private settingsModal: SettingsModal;
-    private exportOverlay: ExportOverlay;
-    private importOverlay: ImportOverlay;
-
-    private host: HTMLElement;
-    private panel: HTMLElement | null = null;
-    private hotzone: HTMLElement | null = null;
-
-    // Backdrop for click-outside handling
     private backdrop: HTMLElement | null = null;
-
-    // --- AUTO-CLOSE PROPERTIES ---
-    private autoCloseTimer: number | null = null;
-    private readonly AUTO_CLOSE_BUFFER = 20; // px
-    private readonly AUTO_CLOSE_DELAY = 300; // ms
-    // -----------------------------
-
-    // --- TOAST PROPERTIES ---
+    private modal: HTMLElement | null = null;
     private toastEl: HTMLElement | null = null;
     private toastTimer: number | null = null;
-    // ------------------------
+
+    private host: HTMLElement;
+    private sidebar: Sidebar;
+    private workspace: Workspace;
 
     constructor(store: Store, shadow: ShadowRoot, host: HTMLElement) {
         super(store, shadow);
         this.host = host;
-
-        this.searchBar = new SearchBar(store, shadow);
-        this.tagDropdown = new TagDropdown(store, shadow);
-        this.promptList = new PromptList(store, shadow);
-        this.promptEditor = new PromptEditor(store, shadow);
-        this.settingsModal = new SettingsModal(store, shadow);
-        this.exportOverlay = new ExportOverlay(store, shadow);
-        this.importOverlay = new ImportOverlay(store, shadow);
+        this.sidebar = new Sidebar(store, shadow);
+        this.workspace = new Workspace(store, shadow);
     }
 
-    mount(parent: HTMLElement) { // ShadowRoot is passed as parent usually
-        console.log('App: Mounting...'); // Debug 1
+    mount(parent: HTMLElement) { // 'parent' arg is unused now, we look up from shadow
+        this.backdrop = this.shadow.getElementById('backdrop');
+        this.modal = this.shadow.getElementById('modal');
+        this.toastEl = this.shadow.getElementById('toast');
 
-        this.panel = this.shadow.getElementById('panel');
-        this.hotzone = this.shadow.getElementById('hotzone');
-        this.toastEl = this.shadow.getElementById('toast'); // <--- CAPTURE TOAST ELEMENT
-
-        if (!this.panel || !this.hotzone) {
-            console.error('App: Panel or Hotzone not found in Shadow DOM'); // Debug 2
+        if (!this.backdrop || !this.modal) {
+            console.error('App: Critical DOM elements missing.');
             return;
         }
 
-        try {
+        // Setup Event Listeners
+        this.setupListeners();
+        this.applySettings(); // APPLY ON LOAD
 
-            // Mount children
-            this.searchBar.mount(this.panel);
-            this.tagDropdown.mount(this.panel);
-            this.promptList.mount(this.panel);
-            this.promptEditor.mount(this.panel);
-            this.settingsModal.mount(this.panel);
-            this.exportOverlay.mount(this.panel);
-            this.importOverlay.mount(this.panel);
+        // MOUNT COMPONENTS
+        this.sidebar.mount(this.modal);
+        this.workspace.mount(this.modal);
 
-            // Setup resize handles
-            setupResizeHandles({
-                panel: this.panel,
-                shadow: this.shadow,
-                host: this.host,
-                getSettings: () => this.store.settings,
-                saveSettings: (s) => this.store.updateSettings(s)
-            });
-
-            this.setupEventListeners();
-            this.setupPanelBehavior();
-            this.applySettings();
-
-            this.store.subscribe('settings_updated', () => this.applySettings());
-            console.log('App: Mounted successfully, listeners attached.'); // Debug 3
-
-        } catch (error) {
-            console.error('App: Error mounting components', error);
-        }
+        // Note: Child components (Sidebar, Workspace) will be mounted here in future steps.
+        console.log('App: Components Mounted.');
     }
 
-    // --- Public Toggle Method for Alt+P ---
+    // NEW: Apply Store Settings to CSS Variables
+    private applySettings() {
+        const s = this.store.settings;
+        // Apply Font Size
+        this.host.style.setProperty('--font-size', `${s.fontSizePx || 13}px`);
+        
+        // Future: Apply Theme here if using attribute-based theme switching
+        // this.host.setAttribute('data-theme', s.theme || 'dark');
+    }
+
     public toggle() {
-        if (this.panel?.classList.contains('open')) {
-            this.closePanel();
+        if (this.backdrop?.classList.contains('open')) {
+            this.close();
         } else {
-            this.openPanel(true);
+            this.open();
         }
     }
 
-    // --- Public method to open with prefilled text ---
+    // New Open/Close Logic
+    public open() {
+        this.backdrop?.classList.add('open');
+        this.host.style.pointerEvents = 'auto'; // Enable interaction
+    }
+
+    public close() {
+        this.backdrop?.classList.remove('open');
+        this.host.style.pointerEvents = 'none'; // Pass-through interaction
+        
+        // Future: Reset router state if needed
+    }
+
     public openWithText(text: string) {
-        // Open panel if not already open
-        if (!this.panel?.classList.contains('open')) {
-            this.openPanel(true);
-        }
-        // Open editor with prefilled text
-        this.promptEditor.open(undefined, undefined, undefined, text);
+        this.open();
+        this.workspace.openEditor(null, null, text);
     }
 
-    // --- Public destroy method for Permission Removal ---
     public destroy() {
         this.host.remove();
-        if (this.backdrop) this.backdrop.remove();
         (window as any).__promptManagerInitialized = false;
     }
 
-    private setupEventListeners() {
-        // --- Use helper method for opening editor ---
-        this.shadow.addEventListener('open-add-mode', () => this.openEditor());
-
-        // --- Use helper method for editing ---
-        this.shadow.addEventListener('edit-prompt', ((e: CustomEvent) => {
-            this.openEditor(e.detail.promptId);
-        }) as EventListener);
-
-        this.shadow.addEventListener('edit-folder', ((e: CustomEvent) => {
-            this.openEditor(undefined, e.detail.folderId);
-        }) as EventListener);
-
-        this.shadow.addEventListener('add-to-folder', ((e: CustomEvent) => {
-            this.openEditor(undefined, undefined, e.detail.folderId);
-        }) as EventListener);
-
-        // --- EXISTING LISTENERS ---
-        this.shadow.addEventListener('toggle-tags-dropdown', () => this.tagDropdown.toggle());
-        this.shadow.addEventListener('open-settings', () => this.settingsModal.open());
-        this.shadow.addEventListener('close-panel', () => this.closePanel());
-        this.shadow.addEventListener('apply-settings', () => this.applySettings());
-
-        this.shadow.addEventListener('open-export-overlay', () => {
-            this.settingsModal.close(); // Close settings first
-            this.exportOverlay.open();
+    private setupListeners() {
+        // Close on Backdrop Click
+        this.backdrop?.addEventListener('click', (e) => {
+            if (e.target === this.backdrop) {
+                this.close();
+            }
         });
 
-        this.shadow.addEventListener('open-import-overlay', () => {
-            this.settingsModal.close();
-            this.importOverlay.open();
+        // Close on Escape
+        document.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape' && this.backdrop?.classList.contains('open')) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                this.close();
+            }
         });
 
-
-        // --- NAVIGATION WIRING ---
-        this.shadow.addEventListener('nav-next', () => this.promptList.selectNext());
-        this.shadow.addEventListener('nav-prev', () => this.promptList.selectPrev());
-        this.shadow.addEventListener('nav-copy', () => this.promptList.copySelected());
-
-        // Reset selection when search changes
-        this.shadow.addEventListener('nav-reset', () => {
-            // We rely on PromptList.render() logic to reset the index
-        });
-
-        // --- Listen for editor closing to reset dropdown ---
-        this.shadow.addEventListener('editor-closed', () => {
-            // Reset Dropdown to default "Filter Mode"
-            this.tagDropdown.onTagSelect = null;
-            this.tagDropdown.activeTagIds = [];
-
-            // Refresh to show global filters
-            this.tagDropdown.refresh();
-        });
-
-        // --- GLOBAL TOAST LISTENER ---
+        // Toast Listener
         this.shadow.addEventListener('show-toast', ((e: CustomEvent) => {
             this.showToast(e.detail.message);
         }) as EventListener);
-        // -----------------------------
 
-        // NEW: Footer Button Wiring
-        const settingsBtn = this.shadow.getElementById('settings-btn');
-        if (settingsBtn) {
-            settingsBtn.addEventListener('click', () => this.settingsModal.open());
-        }
+        // Route Sidebar Events to Workspace
+        this.shadow.addEventListener('workspace-open-prompt', ((e: CustomEvent) => {
+            this.workspace.openEditor(e.detail.promptId);
+        }) as EventListener);
 
-        const newBtn = this.shadow.getElementById('new-btn');
-        if (newBtn) {
-            newBtn.addEventListener('click', () => this.openEditor()); // Opens in "New" mode
-        }
+        this.shadow.addEventListener('workspace-open-folder-editor', ((e: CustomEvent) => {
+            this.workspace.openFolderEditor(e.detail.folderId, e.detail.parentId);
+        }) as EventListener);
 
-        const copyBtn = this.shadow.getElementById('copy-btn');
-        if (copyBtn) {
-            copyBtn.addEventListener('click', () => {
-                // Trigger the PromptList to copy the currently selected item
-                // (PromptList listens for 'nav-copy')
-                this.shadow.dispatchEvent(new CustomEvent('nav-copy'));
-            });
-        }
+        this.shadow.addEventListener('workspace-new-prompt', ((e: CustomEvent) => {
+            this.workspace.openEditor(null, e.detail.parentId);
+        }) as EventListener);
+
+        this.shadow.addEventListener('workspace-settings', () => {
+            this.workspace.openSettings();
+        });
+
+        // NEW: Subscribe to settings changes
+        this.store.subscribe('settings_updated', () => {
+            this.applySettings();
+        });
+
+        this.shadow.addEventListener('app-apply-magic', ((e: CustomEvent) => {
+            const script = e.detail.script;
+            const draft = this.workspace.getDraftText();
+            let finalOutput = script;
+
+            if (draft && draft.trim()) {
+                if (script.includes('[Prompt]:')) {
+                    finalOutput = script + draft;
+                } else {
+                    finalOutput = script + "\n\n" + draft;
+                }
+            }
+
+            navigator.clipboard.writeText(finalOutput);
+            this.showToast(draft ? 'Applied to draft & copied' : 'Script copied');
+        }) as EventListener);
+
+        // --- IMPORT/EXPORT ORCHESTRATION ---
+
+        // Cancel any mode
+        this.shadow.addEventListener('app-mode-cancel', () => {
+            this.sidebar.setNormalMode();
+            this.workspace.mount(this.modal as HTMLElement);
+        });
+
+        // Export flow
+        this.shadow.addEventListener('app-start-export', () => {
+            this.sidebar.startExportMode();
+            this.workspace.mount(this.modal as HTMLElement); // Clears to empty
+        });
+
+        this.shadow.addEventListener('workspace-preview-export', ((e: CustomEvent) => {
+            this.workspace.previewExport(e.detail.promptId);
+        }) as EventListener);
+
+        this.shadow.addEventListener('app-exec-export', () => {
+            const pIds = Array.from(this.sidebar.exportSelectedIds).filter(id => this.store.prompts.some(p => p.id === id));
+            const fIds = Array.from(this.sidebar.exportSelectedIds).filter(id => this.store.folders.some(f => f.id === id));
+            
+            if (pIds.length === 0 && fIds.length === 0) {
+                this.showToast("Nothing selected");
+                return;
+            }
+            
+            const data = this.store.prepareExportData(pIds, fIds);
+            this.store.triggerDownload(data);
+            this.showToast(`Exported ${pIds.length} prompts`);
+            this.sidebar.setNormalMode();
+            this.workspace.mount(this.modal as HTMLElement);
+        });
+
+        // Import flow
+        this.shadow.addEventListener('app-start-import', ((e: CustomEvent) => {
+            const rawData = e.detail.data;
+            try {
+                const validated = this.store.validateImportData(rawData);
+                this.sidebar.startImportMode(validated);
+                this.workspace.mount(this.modal as HTMLElement);
+            } catch (err: any) {
+                this.showToast(err.message);
+            }
+        }) as EventListener);
+
+        this.shadow.addEventListener('workspace-resolve-import', ((e: CustomEvent) => {
+            const p = this.sidebar.getImportPrompt(e.detail.promptId);
+            if (p) {
+                this.workspace.resolveImport(p, () => {
+                    this.sidebar.refreshImportTree();
+                });
+            }
+        }) as EventListener);
+
+        this.shadow.addEventListener('app-exec-import', async () => {
+            const data = this.sidebar.getImportData();
+            const selectedIds = this.sidebar.importSelectedIds;
+            
+            if (!data) return;
+
+            const promptsToImport = data.prompts.filter(p => selectedIds.has(p.id));
+            const foldersToImport = data.folders.filter(f => selectedIds.has(f.id));
+
+            if (promptsToImport.length === 0 && foldersToImport.length === 0) {
+                this.showToast("Nothing selected");
+                return;
+            }
+
+            const hasRed = promptsToImport.some(p => p.conflicts.title || p.conflicts.shortcut);
+            if (hasRed) {
+                this.showToast("Resolve red conflicts in selected items");
+                return;
+            }
+
+            await this.store.finalizeImport(promptsToImport, foldersToImport);
+            this.showToast("Import Successful");
+            this.sidebar.setNormalMode();
+            this.workspace.mount(this.modal as HTMLElement);
+        });
     }
 
-    // --- HELPER METHOD ---
-    private openEditor(promptId?: string, folderId?: string, parentId?: string) {
-        this.promptEditor.open(promptId, folderId, parentId);
 
-        // 1. Tell Dropdown to use Editor's tags for visuals
-        this.tagDropdown.activeTagIds = this.promptEditor.draftTagIds;
-
-        // 2. Override Dropdown click behavior
-        this.tagDropdown.onTagSelect = (tagId) => {
-            // Update the Editor's data
-            this.promptEditor.toggleTag(tagId);
-
-            // Update the Dropdown's visuals (Checkmarks)
-            this.tagDropdown.activeTagIds = this.promptEditor.draftTagIds;
-        };
-
-        // 3. Ensure if editor changes tags internally, dropdown updates
-        this.promptEditor.onTagsChanged = () => {
-            this.tagDropdown.activeTagIds = this.promptEditor.draftTagIds;
-            this.tagDropdown.refresh(); // Ensure this calls refresh()
-        };
-
-        // 4. Refresh immediately so checkmarks appear NOW
-        this.tagDropdown.refresh();
-    }
-
-    // --- TOAST HELPER ---
     private showToast(msg: string) {
         if (!this.toastEl) return;
-
         this.toastEl.textContent = msg;
         this.toastEl.classList.add('show');
-
         if (this.toastTimer) clearTimeout(this.toastTimer);
-
         this.toastTimer = window.setTimeout(() => {
             if (this.toastEl) this.toastEl.classList.remove('show');
             this.toastTimer = null;
         }, 1400);
-    }
-    // --------------------
-
-    private setupPanelBehavior() {
-        if (!this.hotzone || !this.panel) return;
-
-        this.hotzone.addEventListener('mouseenter', () => this.openPanel(false));
-
-        // --- UPDATED KEYDOWN LISTENER (Hierarchy Logic) ---
-        document.addEventListener('keydown', (ev) => {
-            if (ev.key === 'Escape') {
-                // Only act if our panel is actually open
-                if (!this.panel?.classList.contains('open')) return;
-
-                // Priority 1: Close Tags Dropdown (if open)
-                const tagsDropdown = this.shadow.getElementById('tags-dropdown');
-                if (tagsDropdown?.classList.contains('open')) {
-                    ev.preventDefault();
-                    ev.stopPropagation();
-                    this.tagDropdown.close();
-                    return;
-                }
-
-                // Priority 2: Close Editor (if open)
-                const editorArea = this.shadow.getElementById('add-area');
-                if (editorArea?.classList.contains('open')) {
-                    ev.preventDefault();
-                    ev.stopPropagation();
-                    this.promptEditor.close();
-                    return;
-                }
-
-                // Priority 3: Close Settings (if open)
-                // Assuming settings modal uses the ID 'settings-modal' or similar structure
-                const settingsModal = this.shadow.getElementById('settings-modal');
-                if (settingsModal?.classList.contains('open')) {
-                    ev.preventDefault();
-                    ev.stopPropagation();
-                    this.settingsModal.close();
-                    return;
-                }
-
-                // Priority 4: Close Main Panel
-                ev.preventDefault();
-                ev.stopPropagation();
-                this.closePanel();
-            }
-        });
-        // --------------------------------------------------
-
-        // src/content/components/App.ts
-
-        document.addEventListener('mousedown', (ev) => {
-            if (!this.panel?.classList.contains('open')) return;
-
-            const path = (ev as any).composedPath ? (ev as any).composedPath() : [ev.target];
-
-            // Now that mode is 'open', path includes this.panel and internal elements correctly
-            const isInsidePanel = path.includes(this.panel);
-            const isInsideHotspot = path.includes(this.hotzone);
-
-            // Check if click is inside dropdown
-            const isInsideDropdown = path.some((el: any) => {
-                return el instanceof Element && (el.id === 'tags-dropdown' || el.id === 'tags-btn');
-            });
-
-            if (!isInsidePanel && !isInsideHotspot) {
-                this.closePanel();
-                return;
-            }
-
-            if (isInsidePanel && !isInsideDropdown && this.tagDropdown.isOpen()) {
-                this.tagDropdown.close();
-            }
-        });
-
-        // --- MOUSE MOVE LISTENER (AUTO CLOSE) ---
-        document.addEventListener('mousemove', (ev) => this.handleAutoClose(ev));
-        // ----------------------------------------
-    }
-
-    // --- HANDLE AUTO CLOSE ---
-    private handleAutoClose(ev: MouseEvent) {
-        if (!this.panel?.classList.contains('open')) return;
-
-        // Check if auto-close is enabled in settings
-        if (!this.store.settings.autoCloseOnHover) {
-            this.clearAutoCloseTimer();
-            return;
-        }
-
-        // Don't auto-close if we are editing or settings are open
-        if (this.panel.classList.contains('mode-add') || this.panel.classList.contains('mode-settings') || this.panel.classList.contains('is-resizing')) {
-            this.clearAutoCloseTimer();
-            return;
-        }
-
-        const rect = this.panel.getBoundingClientRect();
-
-        // Check if mouse is within the panel OR the buffer zone around it
-        const isInBufferedZone = (
-            ev.clientX >= rect.left - this.AUTO_CLOSE_BUFFER &&
-            ev.clientX <= rect.right + this.AUTO_CLOSE_BUFFER &&
-            ev.clientY >= rect.top - this.AUTO_CLOSE_BUFFER &&
-            ev.clientY <= rect.bottom + this.AUTO_CLOSE_BUFFER
-        );
-
-        if (isInBufferedZone) {
-            // Mouse is inside or near -> Keep open
-            this.clearAutoCloseTimer();
-        } else {
-            // Mouse is outside -> Start timer to close
-            if (!this.autoCloseTimer) {
-                this.autoCloseTimer = window.setTimeout(() => {
-                    this.closePanel();
-                    this.autoCloseTimer = null;
-                }, this.AUTO_CLOSE_DELAY);
-            }
-        }
-    }
-
-    private clearAutoCloseTimer() {
-        if (this.autoCloseTimer) {
-            clearTimeout(this.autoCloseTimer);
-            this.autoCloseTimer = null;
-        }
-    }
-    // -------------------------
-
-    private openPanel(shouldFocus: boolean = false) {
-        if (this.panel) {
-            this.panel.classList.add('open');
-            // Focus search only if requested
-            if (shouldFocus) {
-                setTimeout(() => {
-                    const search = this.shadow.getElementById('search-input');
-                    if (search) (search as HTMLElement).focus();
-                }, 50);
-            }
-        }
-    }
-
-    private closePanel() {
-        // --- Ensure timer is cleared immediately ---
-        this.clearAutoCloseTimer();
-        // -------------------------------------------
-
-        if (this.panel) {
-            this.panel.classList.remove('open');
-            this.tagDropdown.close();
-            this.promptEditor.close();
-            this.settingsModal.close();
-        }
-    }
-
-    private applySettings() {
-        const s = this.store.settings;
-        this.host.style.setProperty('--popup-width', `${s.popupWidthPx || 340}px`);
-        this.host.style.setProperty('--popup-height', s.popupHeightVh ? `${s.popupHeightVh}vh` : '56vh');
-        this.host.style.setProperty('--font-size', `${s.fontSizePx || 13}px`);
-        this.host.style.setProperty('--hotspot-width', `${s.hotspotWidthPx || 24}px`);
-        this.host.setAttribute('data-hotspot-position', s.hotspotPosition || 'edge');
-        this.host.setAttribute('data-theme', s.theme || 'dark');
-
-        // Fix for panel font size inheriting
-        if (this.panel) {
-            this.panel.style.fontSize = `${s.fontSizePx || 13}px`;
-        }
     }
 }
