@@ -1,15 +1,29 @@
-Fix: The "All-In-One" Insertion Chain
-Complexity: Medium
-Files to Modify: src/content/components/TextExpander.ts
-Update src/content/components/TextExpander.ts
-Replace the replaceText and helper methods with this robust chain.
-code
-TypeScript
 // src/content/components/TextExpander.ts
 import { Store, Prompt } from '../store';
 import { CaretLocator } from '../utils/CaretLocator';
 import { QuickMenu } from './QuickMenu';
 import { ClipboardInserter } from '../utils/ClipboardInserter';
+
+// --- STRATEGY DEFINITIONS ---
+type InsertionStrategy = 'NATIVE' | 'SYNC_CLIPBOARD' | 'ASYNC_CLIPBOARD' | 'MANUAL';
+
+// Site-specific preferences based on known constraints
+const SITE_CONFIG: Record<string, InsertionStrategy[]> = {
+    // ChatGPT blocks Async Clipboard (User Token expires). Needs Sync.
+    'chatgpt.com': ['NATIVE', 'SYNC_CLIPBOARD', 'MANUAL'],
+    'openai.com': ['NATIVE', 'SYNC_CLIPBOARD', 'MANUAL'],
+
+    // Claude/Gemini handle Async Clipboard well, but Sync stealing focus confuses them.
+    'claude.ai': ['NATIVE', 'ASYNC_CLIPBOARD', 'MANUAL'],
+    'gemini.google.com': ['NATIVE', 'ASYNC_CLIPBOARD', 'MANUAL'],
+    'aistudio.google.com': ['NATIVE', 'ASYNC_CLIPBOARD', 'MANUAL'],
+
+    // Google Docs blocks native insert heavily. Needs Async Clipboard.
+    'docs.google.com': ['ASYNC_CLIPBOARD', 'MANUAL'],
+};
+
+// Default "Waterfall" for unknown sites
+const DEFAULT_STRATEGIES: InsertionStrategy[] = ['NATIVE', 'SYNC_CLIPBOARD', 'ASYNC_CLIPBOARD', 'MANUAL'];
 
 export class TextExpander {
     private store: Store;
@@ -157,79 +171,77 @@ export class TextExpander {
         this.closeMenu();
     }
 
-    // --- REPLACEMENT LOGIC ---
+    // --- SMART REPLACEMENT LOGIC ---
+    
+    private getStrategies(): InsertionStrategy[] {
+        const hostname = window.location.hostname;
+        // Check for exact match or substring match (e.g. chatgpt.com)
+        const key = Object.keys(SITE_CONFIG).find(k => hostname.includes(k));
+        if (key) {
+            console.log(`[PD] Using site-specific config for: ${key}`);
+            return SITE_CONFIG[key];
+        }
+        return DEFAULT_STRATEGIES;
+    }
+
     private async replaceText(el: HTMLElement, target: string, replacement: string) {
         // 1. Delete Shortcut
         this.deleteShortcut(el, target);
-        
         el.focus();
 
-        // 2. Insert Strategy (Waterfall)
+        // 2. Get Strategies for this Site
+        let strategies = this.getStrategies();
 
-        // STRATEGY A: Native 'insertText' (Small Text)
-        // Most reliable for small insertions (< 300 chars)
+        // OPTIMIZATION: If text is small (< 300 chars), prioritize Native Insert
+        // Native is the fastest/safest for small text everywhere.
         if (replacement.length < 300) {
-            try {
-                const success = document.execCommand('insertText', false, replacement);
-                if (success && this.verifyInsertion(el, replacement)) {
+            // Put NATIVE at the front of the list if it's not already there
+            strategies = ['NATIVE', ...strategies.filter(s => s !== 'NATIVE')];
+        }
+
+        // 3. Execute Strategies in Order
+        for (const strategy of strategies) {
+            console.log(`[PD] Trying Strategy: ${strategy}`);
+            
+            let success = false;
+
+            switch (strategy) {
+                case 'NATIVE':
+                    success = this.tryNativeInsert(el, replacement);
+                    break;
+                case 'SYNC_CLIPBOARD':
+                    success = this.syncClipboardPaste(replacement, el);
+                    break;
+                case 'ASYNC_CLIPBOARD':
+                    success = await this.tryAsyncClipboard(replacement, el);
+                    break;
+                case 'MANUAL':
+                    this.manualInsertFallback(el, replacement);
+                    success = true; // Manual always "succeeds" in execution
+                    break;
+            }
+
+            // 4. Verify Success
+            if (success) {
+                // For manual, we assume success as verification is hard on raw DOM injection
+                if (strategy === 'MANUAL' || this.verifyInsertion(el, replacement)) {
+                    console.log(`[PD] Strategy ${strategy} Succeeded`);
                     this.triggerEvents(el);
-                    return; 
+                    return; // EXIT
                 }
-            } catch (e) { }
+            }
+            console.warn(`[PD] Strategy ${strategy} Failed or was Blocked.`);
         }
+    }
 
-        // STRATEGY B: Synchronous Clipboard (Medium/Large Text)
-        // Works best for ChatGPT (Requires sync execution)
-        console.log("[PD] Trying Strategy B: Sync Clipboard");
-        const syncPaste = this.syncClipboardPaste(replacement, el);
-        if (syncPaste && this.verifyInsertion(el, replacement)) {
-             this.triggerEvents(el);
-             return;
-        }
+    // --- STRATEGY IMPLEMENTATIONS ---
 
-        // STRATEGY C: Async Clipboard API (Large Text)
-        // Works best for Gemini/Claude (They support the API well)
-        // Note: We use 'await' here, so ChatGPT might block this, but we tried Sync first.
-        console.log("[PD] Trying Strategy C: Async Clipboard");
-        const asyncPaste = await ClipboardInserter.insert(replacement);
-        if (asyncPaste && this.verifyInsertion(el, replacement)) {
-            this.triggerEvents(el);
-            return;
-        }
-
-        // STRATEGY D: Native Insert Fallback (Slow but guaranteed)
-        console.warn("[PD] Clipboard strategies failed. Using slow native insert.");
+    private tryNativeInsert(el: HTMLElement, text: string): boolean {
         try {
-            document.execCommand('insertText', false, replacement);
-            this.triggerEvents(el);
-        } catch (e) {
-            // STRATEGY E: Nuclear Fallback (Manual DOM)
-            this.manualInsertFallback(el, replacement);
-        }
+            return document.execCommand('insertText', false, text);
+        } catch (e) { return false; }
     }
 
-    /**
-     * Checks if text node grew. Simple verification.
-     */
-    private verifyInsertion(el: HTMLElement, text: string): boolean {
-        // 1. Input/Textarea Check
-        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-            const input = el as HTMLInputElement;
-            return input.value.includes(text.substring(0, 10)); // Check start
-        }
-
-        // 2. ContentEditable Check
-        const sel = window.getSelection();
-        if (!sel || !sel.anchorNode) return false;
-        
-        const nodeText = sel.anchorNode.textContent || '';
-        // Loose check: If node isn't empty, we likely succeeded
-        return nodeText.length > 0;
-    }
-
-    /**
-     * Hacky Synchronous Clipboard Copy-Paste
-     */
     private syncClipboardPaste(text: string, targetEl: HTMLElement): boolean {
         const selection = window.getSelection();
         const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
@@ -247,18 +259,51 @@ export class TextExpander {
             
             if (!copySuccess) return false;
 
-            // RESTORE
             targetEl.focus();
             if (range && selection) {
                 selection.removeAllRanges();
                 selection.addRange(range);
             }
-
             return document.execCommand('paste');
         } catch (e) {
             targetEl.focus();
             return false;
         }
+    }
+
+    private async tryAsyncClipboard(text: string, el: HTMLElement): Promise<boolean> {
+        const success = await ClipboardInserter.insert(text);
+        // Ensure focus returns
+        el.focus();
+        return success;
+    }
+
+    private manualInsertFallback(el: HTMLElement, replacement: string) {
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) return;
+        const range = sel.getRangeAt(0);
+        
+        const textNode = document.createTextNode(replacement);
+        range.insertNode(textNode);
+        range.setStartAfter(textNode);
+        range.setEndAfter(textNode);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        
+        this.triggerEvents(el);
+    }
+
+    // --- HELPERS ---
+
+    private verifyInsertion(el: HTMLElement, text: string): boolean {
+        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+            const input = el as HTMLInputElement;
+            return input.value.includes(text.substring(0, 10)); 
+        }
+        const sel = window.getSelection();
+        if (!sel || !sel.anchorNode) return false;
+        const nodeText = sel.anchorNode.textContent || '';
+        return nodeText.length > 0;
     }
 
     private deleteShortcut(el: HTMLElement, target: string) {
@@ -288,22 +333,6 @@ export class TextExpander {
         }
     }
 
-    private manualInsertFallback(el: HTMLElement, replacement: string) {
-        const sel = window.getSelection();
-        if (!sel || sel.rangeCount === 0) return;
-        const range = sel.getRangeAt(0);
-        
-        const textNode = document.createTextNode(replacement);
-        range.insertNode(textNode);
-        
-        range.setStartAfter(textNode);
-        range.setEndAfter(textNode);
-        sel.removeAllRanges();
-        sel.addRange(range);
-        
-        this.triggerEvents(el);
-    }
-
     private triggerEvents(el: HTMLElement) {
         const eventTypes = ['input', 'change'];
         for (const type of eventTypes) {
@@ -327,7 +356,6 @@ export class TextExpander {
                 const sel = window.getSelection();
                 if (!sel || sel.rangeCount === 0) return null;
                 
-                // RANGE API Strategy (Robust)
                 const range = sel.getRangeAt(0).cloneRange();
                 
                 if (range.startContainer.nodeType === Node.TEXT_NODE) {
@@ -339,14 +367,12 @@ export class TextExpander {
                     return match ? match[1] : null;
                 }
 
-                // Fallback for Element Nodes
                 const anchorNode = sel.anchorNode;
                 if (anchorNode && anchorNode.nodeType === Node.ELEMENT_NODE) {
                     const text = anchorNode.textContent || '';
                     if (text.endsWith('../')) return '../';
                     return null; 
                 }
-
                 return null;
             }
         } catch (e) { return null; }
