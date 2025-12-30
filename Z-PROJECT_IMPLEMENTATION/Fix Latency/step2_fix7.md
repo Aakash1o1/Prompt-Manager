@@ -1,3 +1,7 @@
+Step 1: Update src/content/components/TextExpander.ts
+Replace the entire file with this code. It includes the new synchronous copy-paste logic inside replaceText.
+code
+TypeScript
 // src/content/components/TextExpander.ts
 import { Store, Prompt } from '../store';
 import { CaretLocator } from '../utils/CaretLocator';
@@ -52,19 +56,9 @@ export class TextExpander {
     };
 
     private handleKeyDown = (ev: KeyboardEvent) => {
-        // --- 1. ZOMBIE CHECK (CRITICAL) ---
-        // Check 1: Is Extension Context valid?
         try {
             if (!chrome.runtime?.id) throw new Error();
         } catch (e) {
-            this.destroy();
-            return;
-        }
-
-        // Check 2: Is our UI still on the page?
-        // If the host element has been removed (by a new instance of the script),
-        // we are a "Zombie" instance. We must stop and let the new instance handle events.
-        if (!this.shadow.host.isConnected) {
             this.destroy();
             return;
         }
@@ -182,16 +176,14 @@ export class TextExpander {
         }
 
         // B. Use Synchronous Copy-Paste for Large Text (Fastest)
-        // PASS THE ELEMENT 'el' SO WE CAN REFOCUS IT
-        const didPaste = this.syncClipboardPaste(replacement, el);
+        // This avoids the 'await' issue that broke ChatGPT.
+        const didPaste = this.syncClipboardPaste(replacement);
         if (didPaste) {
             this.triggerEvents(el);
             return;
         }
 
-        // C. Fallback: Native Insert again (if paste failed/blocked)
-        // This will be slow for large text, but it GUARANTEES it appears.
-        console.log("Clipboard copy-paste failed or blocked. Using slow insert fallback.");
+        // C. Fallback: Native Insert again (if paste failed)
         try {
             document.execCommand('insertText', false, replacement);
             this.triggerEvents(el);
@@ -203,29 +195,27 @@ export class TextExpander {
 
     /**
      * Hacks the clipboard synchronously to paste text instantly.
+     * Required because 'execCommand' only works during the user event loop.
      */
-    private syncClipboardPaste(text: string, targetEl: HTMLElement): boolean {
+    private syncClipboardPaste(text: string): boolean {
         try {
             // 1. Create hidden textarea to hold text
             const textArea = document.createElement("textarea");
             textArea.style.position = "fixed";
             textArea.style.left = "-9999px";
             textArea.style.top = "0";
-            textArea.value = text;
             document.body.appendChild(textArea);
             
-            // 2. Select and Copy (This steals focus!)
-            textArea.focus();
+            textArea.value = text;
             textArea.select();
+            
+            // 2. Copy to clipboard (Synchronous)
             const copySuccess = document.execCommand('copy');
             document.body.removeChild(textArea);
             
             if (!copySuccess) return false;
 
-            // 3. CRITICAL FIX: Restore focus to the actual input before pasting
-            targetEl.focus();
-
-            // 4. Paste into target
+            // 3. Paste into target (Synchronous)
             const pasteSuccess = document.execCommand('paste');
             return pasteSuccess;
         } catch (e) {
