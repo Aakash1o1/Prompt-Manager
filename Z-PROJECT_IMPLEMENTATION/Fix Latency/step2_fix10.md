@@ -1,8 +1,17 @@
+Add Verification: We will measure the length of the current text node before and after the insertion attempt. If the length hasn't increased, we know the method failed, even if no error was thrown.
+Add Logging: Extensive [PD-DEBUG] logs to trace exactly which method is being tried and why it is failing.
+Refine Fallback: If the "clean" methods (Native/Clipboard) fail verification, we aggressively fall back to Manual DOM Insertion, which forces the text into the node regardless of the site's listeners.
+Files to Modify
+src/content/components/TextExpander.ts
+Tasks
+Update src/content/components/TextExpander.ts
+Replace the file with this version. It includes the new verifyInsertion logic and detailed logs.
+code
+TypeScript
 // src/content/components/TextExpander.ts
 import { Store, Prompt } from '../store';
 import { CaretLocator } from '../utils/CaretLocator';
 import { QuickMenu } from './QuickMenu';
-import { ClipboardInserter } from '../utils/ClipboardInserter';
 
 export class TextExpander {
     private store: Store;
@@ -26,7 +35,7 @@ export class TextExpander {
         document.addEventListener('keyup', this.handleKeyUp, true); 
         document.addEventListener('mousedown', this.handleOutsideClick, true);
         this.listening = true;
-        console.log('[PD] TextExpander: Mounted');
+        console.log('[PD-DEBUG] TextExpander: Mounted');
     }
 
     public destroy() {
@@ -54,9 +63,14 @@ export class TextExpander {
     };
 
     private handleKeyDown = (ev: KeyboardEvent) => {
+        // ZOMBIE CHECK
         try {
             if (!chrome.runtime?.id) throw new Error();
         } catch (e) {
+            this.destroy();
+            return;
+        }
+        if (!this.shadow.host.isConnected) {
             this.destroy();
             return;
         }
@@ -116,7 +130,7 @@ export class TextExpander {
             const match = this.store.prompts.find(p => p.quick === shortcut);
 
             if (match) {
-                console.log(`[PD] Shortcut detected: ${shortcut}`);
+                console.log(`[PD-DEBUG] Shortcut detected: ${shortcut}`);
                 ev.preventDefault();
                 ev.stopImmediatePropagation();
                 this.store.recordUsage(match.id);
@@ -151,85 +165,88 @@ export class TextExpander {
     }
 
     // --- REPLACEMENT LOGIC ---
-    private async replaceText(el: HTMLElement, target: string, replacement: string) {
+    private replaceText(el: HTMLElement, target: string, replacement: string) {
+        console.log(`[PD-DEBUG] Starting replacement of "${target}"`);
+        
         // 1. Delete Shortcut
         this.deleteShortcut(el, target);
         
         el.focus();
 
-        // 2. Insert Strategy (Waterfall)
+        // 2. Insert Strategy (Waterfall with Verification)
+        
+        // Strategy A: Native 'insertText' (Best for Undo History)
+        console.log('[PD-DEBUG] Trying Strategy A: Native Insert');
+        let success = false;
+        try {
+            success = document.execCommand('insertText', false, replacement);
+        } catch (e) { console.warn('[PD-DEBUG] Native Insert Threw Error', e); }
 
-        // STRATEGY A: Native 'insertText' (Small Text)
-        // Most reliable for small insertions (< 300 chars)
-        if (replacement.length < 300) {
-            try {
-                const success = document.execCommand('insertText', false, replacement);
-                if (success && this.verifyInsertion(el, replacement)) {
-                    this.triggerEvents(el);
-                    return; 
-                }
-            } catch (e) { }
-        }
-
-        // STRATEGY B: Synchronous Clipboard (Medium/Large Text)
-        // Works best for ChatGPT (Requires sync execution)
-        console.log("[PD] Trying Strategy B: Sync Clipboard");
-        const syncPaste = this.syncClipboardPaste(replacement, el);
-        if (syncPaste && this.verifyInsertion(el, replacement)) {
-             this.triggerEvents(el);
-             return;
-        }
-
-        // STRATEGY C: Async Clipboard API (Large Text)
-        // Works best for Gemini/Claude (They support the API well)
-        // Note: We use 'await' here, so ChatGPT might block this, but we tried Sync first.
-        console.log("[PD] Trying Strategy C: Async Clipboard");
-        const asyncPaste = await ClipboardInserter.insert(replacement);
-        if (asyncPaste && this.verifyInsertion(el, replacement)) {
+        // VERIFY A
+        if (success && this.verifyInsertion(el, replacement)) {
+            console.log('[PD-DEBUG] Strategy A Succeeded');
             this.triggerEvents(el);
             return;
         }
+        console.warn('[PD-DEBUG] Strategy A Failed or was blocked. Trying B...');
 
-        // STRATEGY D: Native Insert Fallback (Slow but guaranteed)
-        console.warn("[PD] Clipboard strategies failed. Using slow native insert.");
-        try {
-            document.execCommand('insertText', false, replacement);
+        // Strategy B: Synchronous Clipboard (Fastest for large text)
+        console.log('[PD-DEBUG] Trying Strategy B: Sync Clipboard');
+        const didPaste = this.syncClipboardPaste(replacement, el);
+        
+        // VERIFY B
+        if (didPaste && this.verifyInsertion(el, replacement)) {
+            console.log('[PD-DEBUG] Strategy B Succeeded');
             this.triggerEvents(el);
-        } catch (e) {
-            // STRATEGY E: Nuclear Fallback (Manual DOM)
-            this.manualInsertFallback(el, replacement);
+            return;
         }
+        console.warn('[PD-DEBUG] Strategy B Failed. Trying C...');
+
+        // Strategy C: Manual DOM (Nuclear Option)
+        // If the site blocks commands, we manually inject the text node.
+        console.log('[PD-DEBUG] Trying Strategy C: Manual DOM');
+        this.manualInsertFallback(el, replacement);
     }
 
     /**
-     * Checks if text node grew. Simple verification.
+     * Checks if the text node content actually grew. 
+     * This is a heuristic to detect if the site "swallowed" the command.
      */
-    private verifyInsertion(el: HTMLElement, text: string): boolean {
+    private verifyInsertion(el: HTMLElement, insertedText: string): boolean {
         // 1. Input/Textarea Check
         if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
             const input = el as HTMLInputElement;
-            return input.value.includes(text.substring(0, 10)); // Check start
+            // Simple check: does it contain the text?
+            // (Not perfect if text matches existing, but good enough for confirmation)
+            return input.value.includes(insertedText); 
         }
 
         // 2. ContentEditable Check
         const sel = window.getSelection();
-        if (!sel || !sel.anchorNode) return false;
-        
+        if (!sel || !sel.anchorNode) return false; // Can't verify
+
+        // We check the anchor node (where cursor is). 
+        // If insertion worked, the text content length should likely be > 0.
+        // Or strictly: did we insert a significant chunk?
         const nodeText = sel.anchorNode.textContent || '';
-        // Loose check: If node isn't empty, we likely succeeded
-        return nodeText.length > 0;
+        
+        // If text is very short (just inserted), verification passes.
+        // If text is huge, we assume it worked if length > inserted length.
+        // This is a "Loose" verification.
+        if (nodeText.length >= insertedText.length) {
+            return true;
+        }
+        
+        // If node text is smaller than what we inserted, it definitely failed.
+        return false;
     }
 
-    /**
-     * Hacky Synchronous Clipboard Copy-Paste
-     */
     private syncClipboardPaste(text: string, targetEl: HTMLElement): boolean {
-        const selection = window.getSelection();
-        const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
-
         try {
             const textArea = document.createElement("textarea");
-            Object.assign(textArea.style, { position: 'fixed', left: '-9999px', top: '0', opacity: '0' });
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            textArea.style.top = "0";
             textArea.value = text;
             document.body.appendChild(textArea);
             
@@ -240,21 +257,16 @@ export class TextExpander {
             
             if (!copySuccess) return false;
 
-            // RESTORE
             targetEl.focus();
-            if (range && selection) {
-                selection.removeAllRanges();
-                selection.addRange(range);
-            }
-
-            return document.execCommand('paste');
+            const pasteSuccess = document.execCommand('paste');
+            return pasteSuccess;
         } catch (e) {
-            targetEl.focus();
             return false;
         }
     }
 
     private deleteShortcut(el: HTMLElement, target: string) {
+        console.log('[PD-DEBUG] Deleting shortcut...');
         if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
             const input = el as HTMLInputElement;
             const start = input.selectionStart || 0;
@@ -320,27 +332,25 @@ export class TextExpander {
                 const sel = window.getSelection();
                 if (!sel || sel.rangeCount === 0) return null;
                 
-                // RANGE API Strategy (Robust)
-                const range = sel.getRangeAt(0).cloneRange();
-                
-                if (range.startContainer.nodeType === Node.TEXT_NODE) {
-                    const lookBack = Math.min(range.startOffset, 50);
-                    range.setStart(range.startContainer, range.startOffset - lookBack);
-                    const text = range.toString();
-                    if (text.endsWith('../')) return '../';
-                    const match = text.match(/(\S+)$/);
-                    return match ? match[1] : null;
-                }
+                let anchorNode = sel.anchorNode;
+                let offset = sel.anchorOffset;
 
-                // Fallback for Element Nodes
-                const anchorNode = sel.anchorNode;
+                // Handle cases where anchor is an Element
                 if (anchorNode && anchorNode.nodeType === Node.ELEMENT_NODE) {
                     const text = anchorNode.textContent || '';
                     if (text.endsWith('../')) return '../';
                     return null; 
                 }
 
-                return null;
+                if (!anchorNode || anchorNode.nodeType !== Node.TEXT_NODE) return null;
+
+                const text = anchorNode.textContent || '';
+                const textBefore = text.slice(0, offset);
+
+                if (textBefore.endsWith('../')) return '../';
+
+                const match = textBefore.match(/(\S+)$/);
+                return match ? match[1] : null;
             }
         } catch (e) { return null; }
     }

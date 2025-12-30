@@ -1,3 +1,10 @@
+Fix: The "All-In-One" Insertion Chain
+Complexity: Medium
+Files to Modify: src/content/components/TextExpander.ts
+Update src/content/components/TextExpander.ts
+Replace the replaceText and helper methods with this robust chain.
+code
+TypeScript
 // src/content/components/TextExpander.ts
 import { Store, Prompt } from '../store';
 import { CaretLocator } from '../utils/CaretLocator';

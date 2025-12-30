@@ -12,6 +12,7 @@ const TIPS = [
     "Pin your prompts to access them in Quick Menu.",
     "Right-click text -> right-click -> save to drawer",
     "Export your data regularly to keep a safe backup.",
+    "Add special characters in start of your shortcut so they dont interfear with your normal typing",
 ];
 
 export class Workspace extends Component {
