@@ -40,10 +40,9 @@ export class ControlPanel extends Component {
                             <div class="cp-label">Font Size</div>
                             <div class="cp-desc">Base text scaling (${s.fontSizePx}px)</div>
                         </div>
-                        <div style="display:flex; gap:8px; align-items:center;">
-                            <button class="icon-btn" id="cp-font-dec">-</button>
-                            <span style="width:30px; text-align:center; font-size:13px;">${s.fontSizePx}</span>
-                            <button class="icon-btn" id="cp-font-inc">+</button>
+                        <div style="display:flex; gap:4px; align-items:center;">
+                            <button class="icon-btn" id="cp-font-dec" style="width:32px; height:32px; font-size:20px; justify-content:center; background:var(--bg-hover);">–</button>
+                            <button class="icon-btn" id="cp-font-inc" style="width:32px; height:32px; font-size:20px; justify-content:center; background:var(--bg-hover);">+</button>
                         </div>
                     </div>
                 </div>

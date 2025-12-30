@@ -6,7 +6,7 @@ export interface DefaultPrompt {
   text: string;
   quick?: string;
   tags?: string[];
-  folderName?: string; // NEW: Support for placing default prompts in folders
+  folderName?: string;
 }
 
 export interface DefaultTag {
@@ -32,7 +32,7 @@ export const DEFAULT_FOLDERS: DefaultFolder[] = [
 export const DEFAULT_PROMPTS: DefaultPrompt[] = [
   {
     title: 'Type "expand" in your text bar',
-    quick: 'expand',
+    quick: '.expand',
     text: '1. Paste any prompt just by its shortcut\n2. To give access to any site, just press Alt + P there\n3. Organize prompts in folders',
     folderName: 'Organize prompts in folders'
   },

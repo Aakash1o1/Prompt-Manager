@@ -3,23 +3,34 @@ export const STYLES = `
 /* --- VARIABLES --- */
 :host {
   all: initial;
+  display: block;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--txt-primary);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
   
-  /* --- PALETTE (Zinc Dark Mode) --- */
-  --bg-app: #09090b;       /* Zinc-950: Main Modal Background */
-  --bg-sidebar: #18181b;   /* Zinc-900: Sidebar Background */
-  --bg-hover: #27272a;     /* Zinc-800: Hover States */
-  --bg-active: #27272a;    /* Zinc-800: Active Selection */
+  /* --- BACKGROUNDS --- */
+  --bg-app: #0f1117;       /* Main container background (Deepest Blue-Grey) */
+  --bg-panel: #161b22;     /* Sidebar / Modals (Slightly lighter) */
+  --bg-input: #0d1117;     /* Input fields (Darker for depth) */
+  --bg-hover: rgba(56, 139, 253, 0.1); /* Subtle Blue tint on hover */
+  --bg-active: rgba(56, 139, 253, 0.2); /* Stronger Blue tint when selected */
   
-  --border-subtle: #27272a; /* Zinc-800 */
-  --border-default: #3f3f46; /* Zinc-700 */
+  /* --- BORDERS --- */
+  --border-subtle: #21262d; /* Very subtle dividers */
+  --border-default: #30363d; /* Standard borders */
+  --border-focus: #58a6ff;   /* Bright Blue focus ring */
   
-  --accent: #3b82f6;       /* Blue-500 */
-  --danger: #ef4444;       /* Red-500 */
+  /* --- ACCENTS --- */
+  --accent: #2f81f7;       /* Primary Action Blue (Vibrant but readable) */
+  --accent-hover: #58a6ff; /* Lighter Blue for hover states */
+  --accent-dim: rgba(47, 129, 247, 0.15); /* Low opacity accent for backgrounds */
+  --danger: #da3633;       /* Muted Red for delete actions */
   
-  --txt-primary: #fafafa;  /* Zinc-50 */
-  --txt-secondary: #a1a1aa; /* Zinc-400 */
-  --txt-muted: #52525b;    /* Zinc-600 */
+  /* --- TYPOGRAPHY --- */
+  --txt-primary: #ffffff;  /* Pure White */
+  --txt-secondary: #8b949e; /* Cool Grey (Good for labels) */
+  --txt-muted: #484f58;    /* Dark Grey (For placeholders/disabled) */
   
   /* --- DIMENSIONS --- */
   --modal-width: 800px;
@@ -37,7 +48,14 @@ export const STYLES = `
 * {
   box-sizing: border-box;
   scrollbar-width: none;
-  font-family: inherit;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-weight: 600;
+  color: inherit;
 }
 *::-webkit-scrollbar {
   display: none;
@@ -100,7 +118,7 @@ input[type=number] {
 
 /* --- LAYOUT COLUMNS --- */
 .sidebar {
-  background: var(--bg-sidebar);
+  background: var(--bg-panel);
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
@@ -165,7 +183,7 @@ input[type=number] {
   align-items: center;
   padding: 6px 12px;
   cursor: pointer;
-  color: var(--txt-secondary);
+  color: var(--txt-primary);
   font-size: var(--font-size); /* FIX 2 */
   user-select: none;
   position: relative;
@@ -422,7 +440,7 @@ button {
 .cp-section-title {
   font-size: 11px;
   font-weight: 700;
-  color: var(--txt-muted);
+  color: var(--txt-primary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 12px;
@@ -544,7 +562,7 @@ input:checked + .toggle-switch::after { transform: translateX(20px); }
     bottom: 30px;
     left: 50%;
     transform: translateX(-50%);
-    background: var(--bg-sidebar);
+    background: var(--bg-panel);
     border: 1px solid var(--border-default);
     color: var(--txt-primary);
     padding: 8px 16px;
