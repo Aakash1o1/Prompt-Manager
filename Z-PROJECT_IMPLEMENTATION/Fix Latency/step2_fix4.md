@@ -1,3 +1,15 @@
+Fix: Robust Focus Management in TextExpander.ts
+Complexity: Low
+Files to Modify:
+src/content/components/TextExpander.ts
+Tasks:
+Store the activeEl (the editor) as a class property when opening the menu.
+In handleSelection, ignore document.activeElement (which might be wrong) and use the stored element.
+Call el.focus() aggressively.
+Update src/content/components/TextExpander.ts
+Replace the class content with this updated version. (I've removed the debug logs to clean it up, but kept the logic fixes).
+code
+TypeScript
 // src/content/components/TextExpander.ts
 import { Store, Prompt } from '../store';
 import { CaretLocator } from '../utils/CaretLocator';
@@ -11,10 +23,8 @@ export class TextExpander {
     private listening: boolean = false;
     private menuOpen: boolean = false;
     
-    // Track the target editor element
+    // NEW: Track the target editor element specifically
     private targetEditor: HTMLElement | null = null;
-    // Track if we just handled an Enter key to block the subsequent KeyUp
-    private handledEnter: boolean = false;
 
     constructor(store: Store, shadow: ShadowRoot) {
         this.store = store;
@@ -24,16 +34,13 @@ export class TextExpander {
 
     public mount() {
         if (this.listening) return;
-        // Capture Phase (true) is crucial to intercept before the website does
         document.addEventListener('keydown', this.handleKeyDown, true);
-        document.addEventListener('keyup', this.handleKeyUp, true); 
         document.addEventListener('mousedown', this.handleOutsideClick, true);
         this.listening = true;
     }
 
     public destroy() {
         document.removeEventListener('keydown', this.handleKeyDown, true);
-        document.removeEventListener('keyup', this.handleKeyUp, true);
         document.removeEventListener('mousedown', this.handleOutsideClick, true);
         this.listening = false;
     }
@@ -44,15 +51,6 @@ export class TextExpander {
             if (!path.some((el: any) => el === (this.menu as any).el)) {
                 this.closeMenu();
             }
-        }
-    };
-
-    // --- FIX A: BLOCK KEYUP (NotebookLM Fix) ---
-    private handleKeyUp = (ev: KeyboardEvent) => {
-        if (this.handledEnter && ev.key === 'Enter') {
-            ev.preventDefault();
-            ev.stopImmediatePropagation();
-            this.handledEnter = false; // Reset
         }
     };
 
@@ -84,19 +82,17 @@ export class TextExpander {
             if (ev.key === 'Enter' || ev.key === 'Tab') {
                 ev.preventDefault();
                 ev.stopImmediatePropagation();
-                
-                // Flag this so KeyUp listener knows to kill it too
-                if (ev.key === 'Enter') this.handledEnter = true;
-
                 this.handleSelection(this.menu.getSelectedPrompt());
                 return;
             }
             if (ev.key === 'Escape') {
                 ev.preventDefault();
                 this.closeMenu();
+                // Refocus editor on escape
                 if (this.targetEditor) this.targetEditor.focus();
                 return;
             }
+            // Close if user types space or normal char (let event propagate to type the char)
             if (ev.key.length === 1) {
                 this.closeMenu();
             }
@@ -111,6 +107,7 @@ export class TextExpander {
             const word = this.getWordBeforeCaret(activeEl);
             if (!word) return;
 
+            // Trigger: "../"
             if (word === '../') { 
                 ev.preventDefault();
                 ev.stopImmediatePropagation();
@@ -118,6 +115,7 @@ export class TextExpander {
                 return;
             }
 
+            // Trigger: Standard Shortcut
             const shortcut = word;
             const match = this.store.prompts.find(p => p.quick === shortcut);
 
@@ -131,7 +129,7 @@ export class TextExpander {
     };
 
     private openMenu(el: HTMLElement) {
-        this.targetEditor = el;
+        this.targetEditor = el; // Capture the editor element
         const coords = CaretLocator.getCaretCoords(el);
         this.menu.open(coords);
         this.menuOpen = true;
@@ -144,47 +142,47 @@ export class TextExpander {
     }
 
     private handleSelection(p: Prompt) {
+        // Use the captured target editor, fallback to activeElement if missing
         const el = this.targetEditor || document.activeElement as HTMLElement;
         
         if (el) {
+            // Force focus back to the editor before pasting
             el.focus();
             
-            // Immediate insertion for synchronous reliability
-            this.replaceText(el, '../', p.text); 
-            this.store.recordUsage(p.id);
+            // Wait 10ms for focus to settle (Fix for some React apps)
+            setTimeout(() => {
+               this.replaceText(el, '../', p.text); 
+               this.store.recordUsage(p.id);
+            }, 10);
         }
         this.closeMenu();
     }
 
-    // --- FIX B: SYNCHRONOUS INSERTION (ChatGPT Fix) ---
     private async replaceText(el: HTMLElement, target: string, replacement: string) {
         // 1. Delete Shortcut
         this.deleteShortcut(el, target);
 
-        el.focus();
-
-        // 2. PRIMARY STRATEGY: Native InsertText (Synchronous)
-        // This preserves the User Interaction Token required by ChatGPT/Browsers.
-        // Even for large text, this is usually preferred over losing the token.
-        try {
+        // 2. Insert Replacement
+        
+        // A. Small text? Use Native Command
+        if (replacement.length < 50) {
+            // execCommand requires focus
+            el.focus();
             const success = document.execCommand('insertText', false, replacement);
             if (success) {
                 this.triggerEvents(el);
-                return; // Done!
+                return;
             }
-        } catch (e) {
-            // Ignore error and fall through to backup strategies
         }
 
-        // 3. BACKUP STRATEGY: Clipboard API (Async)
-        // Only if native insert failed (rare).
+        // B. Large text? Use Clipboard
         const pasteSuccess = await ClipboardInserter.insert(replacement);
         if (pasteSuccess) {
             this.triggerEvents(el);
             return;
         }
 
-        // 4. LAST RESORT: Manual DOM
+        // C. Fallback: Manual Node Insertion
         this.manualInsertFallback(el, replacement);
     }
 
@@ -204,9 +202,12 @@ export class TextExpander {
                     const startOffset = Math.max(0, range.startOffset - target.length);
                     range.setStart(range.startContainer, startOffset);
                     range.deleteContents();
+                    
+                    // Critical: Update selection to collapsed point so subsequent insert works
                     sel.removeAllRanges();
                     sel.addRange(range);
                 } else {
+                    // Fallback for complex nodes
                     for(let i=0; i<target.length; i++) {
                         document.execCommand('delete');
                     }
@@ -259,6 +260,7 @@ export class TextExpander {
                 let anchorNode = sel.anchorNode;
                 let offset = sel.anchorOffset;
 
+                // Handle cases where anchor is an Element
                 if (anchorNode && anchorNode.nodeType === Node.ELEMENT_NODE) {
                     const text = anchorNode.textContent || '';
                     if (text.endsWith('../')) return '../';

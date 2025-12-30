@@ -1,3 +1,19 @@
+Step 2: Optimized Logic Core (TextExpander)
+Objective:
+Fix Read Lag: Detect triggers by reading only the current text node (Anchor Node) instead of the entire document.
+Fix Write Lag: Implement the "Waterfall Strategy" for insertion (Native for short text, Clipboard for long text).
+Complexity: MEDIUM
+Files to Modify:
+src/content/components/TextExpander.ts
+Tasks:
+Update src/content/components/TextExpander.ts
+Replace the entire file with this optimized version.
+Key Changes:
+Import: Added ClipboardInserter.
+replaceText: Now async. Implements deletion before insertion. Uses Clipboard for texts > 50 chars.
+getWordBeforeCaret: completely rewritten for ContentEditable to use sel.anchorNode (Fast) instead of textContent (Slow).
+code
+TypeScript
 // src/content/components/TextExpander.ts
 import { Store, Prompt } from '../store';
 import { CaretLocator } from '../utils/CaretLocator';
@@ -10,11 +26,6 @@ export class TextExpander {
     private menu: QuickMenu;
     private listening: boolean = false;
     private menuOpen: boolean = false;
-    
-    // Track the target editor element
-    private targetEditor: HTMLElement | null = null;
-    // Track if we just handled an Enter key to block the subsequent KeyUp
-    private handledEnter: boolean = false;
 
     constructor(store: Store, shadow: ShadowRoot) {
         this.store = store;
@@ -24,16 +35,14 @@ export class TextExpander {
 
     public mount() {
         if (this.listening) return;
-        // Capture Phase (true) is crucial to intercept before the website does
         document.addEventListener('keydown', this.handleKeyDown, true);
-        document.addEventListener('keyup', this.handleKeyUp, true); 
         document.addEventListener('mousedown', this.handleOutsideClick, true);
         this.listening = true;
+        console.log('TextExpander: Mounted (Optimized).');
     }
 
     public destroy() {
         document.removeEventListener('keydown', this.handleKeyDown, true);
-        document.removeEventListener('keyup', this.handleKeyUp, true);
         document.removeEventListener('mousedown', this.handleOutsideClick, true);
         this.listening = false;
     }
@@ -47,18 +56,10 @@ export class TextExpander {
         }
     };
 
-    // --- FIX A: BLOCK KEYUP (NotebookLM Fix) ---
-    private handleKeyUp = (ev: KeyboardEvent) => {
-        if (this.handledEnter && ev.key === 'Enter') {
-            ev.preventDefault();
-            ev.stopImmediatePropagation();
-            this.handledEnter = false; // Reset
-        }
-    };
-
     private handleKeyDown = (ev: KeyboardEvent) => {
+        // --- 1. CRITICAL: SELF-DESTRUCT CHECK ---
         try {
-            if (!chrome.runtime?.id) throw new Error();
+            if (!chrome.runtime?.id) throw new Error("Extension context invalidated");
         } catch (e) {
             this.destroy();
             return;
@@ -67,42 +68,38 @@ export class TextExpander {
         const activeEl = document.activeElement as HTMLElement;
         if (!activeEl) return;
 
-        // --- MENU NAVIGATION ---
+        // --- 2. MENU NAVIGATION ---
         if (this.menuOpen) {
             if (ev.key === 'ArrowDown') {
                 ev.preventDefault();
-                ev.stopImmediatePropagation();
                 this.menu.moveSelection('down');
                 return;
             }
             if (ev.key === 'ArrowUp') {
                 ev.preventDefault();
-                ev.stopImmediatePropagation();
                 this.menu.moveSelection('up');
                 return;
             }
-            if (ev.key === 'Enter' || ev.key === 'Tab') {
+            if (ev.key === 'Enter') {
                 ev.preventDefault();
-                ev.stopImmediatePropagation();
-                
-                // Flag this so KeyUp listener knows to kill it too
-                if (ev.key === 'Enter') this.handledEnter = true;
-
                 this.handleSelection(this.menu.getSelectedPrompt());
                 return;
             }
-            if (ev.key === 'Escape') {
-                ev.preventDefault();
+            if (ev.key === 'Escape' || ev.key === 'Backspace') {
                 this.closeMenu();
-                if (this.targetEditor) this.targetEditor.focus();
+                if (ev.key === 'Escape') {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                }
                 return;
             }
+            // Close if user types space or normal char
             if (ev.key.length === 1) {
                 this.closeMenu();
             }
         }
 
-        // --- TRIGGER DETECTION ---
+        // --- 3. TRIGGER DETECTION (Space) ---
         if (ev.key === ' ' || ev.code === 'Space') {
             const isInput = activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA';
             const isContentEditable = activeEl.isContentEditable;
@@ -111,6 +108,7 @@ export class TextExpander {
             const word = this.getWordBeforeCaret(activeEl);
             if (!word) return;
 
+            // Trigger: "../"
             if (word === '../') { 
                 ev.preventDefault();
                 ev.stopImmediatePropagation();
@@ -118,20 +116,22 @@ export class TextExpander {
                 return;
             }
 
+            // Trigger: Standard Shortcut
             const shortcut = word;
             const match = this.store.prompts.find(p => p.quick === shortcut);
 
             if (match) {
+                console.log(`Expanding shortcut: ${shortcut}`);
                 ev.preventDefault();
                 ev.stopImmediatePropagation();
                 this.store.recordUsage(match.id);
+                // Call async replacement
                 this.replaceText(activeEl, word, match.text);
             }
         }
     };
 
     private openMenu(el: HTMLElement) {
-        this.targetEditor = el;
         const coords = CaretLocator.getCaretCoords(el);
         this.menu.open(coords);
         this.menuOpen = true;
@@ -140,51 +140,43 @@ export class TextExpander {
     private closeMenu() {
         this.menu.close();
         this.menuOpen = false;
-        this.targetEditor = null;
     }
 
     private handleSelection(p: Prompt) {
-        const el = this.targetEditor || document.activeElement as HTMLElement;
-        
-        if (el) {
-            el.focus();
-            
-            // Immediate insertion for synchronous reliability
-            this.replaceText(el, '../', p.text); 
+        const activeEl = document.activeElement as HTMLElement;
+        if (activeEl) {
+            this.replaceText(activeEl, '../', p.text);
             this.store.recordUsage(p.id);
         }
         this.closeMenu();
     }
 
-    // --- FIX B: SYNCHRONOUS INSERTION (ChatGPT Fix) ---
+    /**
+     * OPTIMIZED REPLACEMENT STRATEGY (Waterfall)
+     */
     private async replaceText(el: HTMLElement, target: string, replacement: string) {
-        // 1. Delete Shortcut
+        // 1. DELETE SHORTCUT
         this.deleteShortcut(el, target);
 
-        el.focus();
-
-        // 2. PRIMARY STRATEGY: Native InsertText (Synchronous)
-        // This preserves the User Interaction Token required by ChatGPT/Browsers.
-        // Even for large text, this is usually preferred over losing the token.
-        try {
+        // 2. INSERT REPLACEMENT
+        
+        // A. Small text (<50 chars)? Use Native Command (Fastest for small edits)
+        if (replacement.length < 50) {
             const success = document.execCommand('insertText', false, replacement);
             if (success) {
                 this.triggerEvents(el);
-                return; // Done!
+                return;
             }
-        } catch (e) {
-            // Ignore error and fall through to backup strategies
         }
 
-        // 3. BACKUP STRATEGY: Clipboard API (Async)
-        // Only if native insert failed (rare).
+        // B. Large text? Use Clipboard (Fastest for bulk, handles formatting)
         const pasteSuccess = await ClipboardInserter.insert(replacement);
         if (pasteSuccess) {
             this.triggerEvents(el);
             return;
         }
 
-        // 4. LAST RESORT: Manual DOM
+        // C. Fallback: Manual Text Node Insertion (If clipboard blocked)
         this.manualInsertFallback(el, replacement);
     }
 
@@ -199,14 +191,15 @@ export class TextExpander {
             if (!sel || sel.rangeCount === 0) return;
             const range = sel.getRangeAt(0);
             
+            // Attempt to remove characters backwards
             try {
                 if (range.startContainer.nodeType === Node.TEXT_NODE) {
                     const startOffset = Math.max(0, range.startOffset - target.length);
                     range.setStart(range.startContainer, startOffset);
                     range.deleteContents();
-                    sel.removeAllRanges();
-                    sel.addRange(range);
                 } else {
+                    // Complex DOM (shortcut spans nodes) - Try execCommand delete
+                    // This is imperfect but handles edge cases where text nodes are split
                     for(let i=0; i<target.length; i++) {
                         document.execCommand('delete');
                     }
@@ -217,19 +210,16 @@ export class TextExpander {
         }
     }
 
-    private manualInsertFallback(el: HTMLElement, replacement: string) {
+    private manualInsertFallback(el: HTMLElement, text: string) {
         const sel = window.getSelection();
         if (!sel || sel.rangeCount === 0) return;
         const range = sel.getRangeAt(0);
-        
-        const textNode = document.createTextNode(replacement);
+        const textNode = document.createTextNode(text);
         range.insertNode(textNode);
-        
         range.setStartAfter(textNode);
         range.setEndAfter(textNode);
         sel.removeAllRanges();
         sel.addRange(range);
-        
         this.triggerEvents(el);
     }
 
@@ -241,37 +231,42 @@ export class TextExpander {
         }
     }
 
+    /**
+     * OPTIMIZED DETECTION: Reads only Anchor Node (Current Line/Para)
+     */
     private getWordBeforeCaret(el: HTMLElement): string | null {
         try {
+            // Case A: Input/Textarea (Simple String Slice)
             if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
                 const input = el as HTMLInputElement;
                 const cursorPos = input.selectionStart || 0;
                 const textBefore = input.value.slice(0, cursorPos);
                 
+                // Check specific trigger
                 if (textBefore.endsWith('../')) return '../';
+                
+                // Check word
                 const match = textBefore.match(/(\S+)$/);
                 return match ? match[1] : null;
             } 
+            
+            // Case B: ContentEditable (Anchor Node Strategy)
             else {
                 const sel = window.getSelection();
                 if (!sel || sel.rangeCount === 0) return null;
                 
-                let anchorNode = sel.anchorNode;
-                let offset = sel.anchorOffset;
-
-                if (anchorNode && anchorNode.nodeType === Node.ELEMENT_NODE) {
-                    const text = anchorNode.textContent || '';
-                    if (text.endsWith('../')) return '../';
-                    return null; 
-                }
-
+                // Only look at the text node where the cursor is
+                const anchorNode = sel.anchorNode;
                 if (!anchorNode || anchorNode.nodeType !== Node.TEXT_NODE) return null;
 
                 const text = anchorNode.textContent || '';
+                const offset = sel.anchorOffset;
                 const textBefore = text.slice(0, offset);
 
+                // Check specific trigger
                 if (textBefore.endsWith('../')) return '../';
 
+                // Check word
                 const match = textBefore.match(/(\S+)$/);
                 return match ? match[1] : null;
             }

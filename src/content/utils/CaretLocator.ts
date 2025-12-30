@@ -1,3 +1,5 @@
+// src/content/utils/CaretLocator.ts
+
 export interface CaretCoords {
     x: number;
     y: number;
@@ -5,9 +7,6 @@ export interface CaretCoords {
 }
 
 export class CaretLocator {
-    /**
-     * Main entry point to get coordinates for any supported editable element.
-     */
     static getCaretCoords(el: HTMLElement): CaretCoords {
         if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
             return this.getInputCoords(el);
@@ -23,21 +22,19 @@ export class CaretLocator {
         const range = sel.getRangeAt(0).cloneRange();
         const rects = range.getClientRects();
         
-        // If we have client rects (text exists), use the last one
         if (rects.length > 0) {
-            const rect = rects[0];
+            const rect = rects[rects.length - 1];
             return {
-                x: rect.left + window.scrollX,
-                y: rect.top + window.scrollY,
+                x: rect.left, 
+                y: rect.top,  
                 lineHeight: rect.height
             };
         }
 
-        // Fallback: if line is empty, get position of the element itself
         const rect = el.getBoundingClientRect();
         return {
-            x: rect.left + window.scrollX,
-            y: rect.top + window.scrollY,
+            x: rect.left,
+            y: rect.top,
             lineHeight: 20
         };
     }
@@ -46,12 +43,10 @@ export class CaretLocator {
         const div = document.createElement('div');
         const copyStyles = window.getComputedStyle(el);
 
-        // 1. Mirror styles
         for (const prop of copyStyles) {
             div.style.setProperty(prop, copyStyles.getPropertyValue(prop));
         }
 
-        // 2. Critical functional styles
         Object.assign(div.style, {
             position: 'absolute',
             visibility: 'hidden',
@@ -62,7 +57,6 @@ export class CaretLocator {
             left: '0',
         });
 
-        // 3. Content up to caret
         const value = el.value;
         const index = el.selectionStart || 0;
         const textBefore = value.substring(0, index);
@@ -75,13 +69,11 @@ export class CaretLocator {
 
         document.body.appendChild(div);
 
-        // 4. Calculate coordinates
         const rect = el.getBoundingClientRect();
         const spanRect = span.getBoundingClientRect();
         
-        // Adjust for scroll position inside the textarea
-        const x = rect.left + span.offsetLeft - el.scrollLeft + window.scrollX;
-        const y = rect.top + span.offsetTop - el.scrollTop + window.scrollY;
+        const x = rect.left + span.offsetLeft - el.scrollLeft; 
+        const y = rect.top + span.offsetTop - el.scrollTop;   
         const lineHeight = spanRect.height;
 
         document.body.removeChild(div);

@@ -8,7 +8,9 @@
     "scripting",
     "activeTab",
     "commands",
-    "contextMenus"
+    "contextMenus",
+    "clipboardRead",
+    "clipboardWrite"
   ],
   "optional_host_permissions": [
     "http://*/*",

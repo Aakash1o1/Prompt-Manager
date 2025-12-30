@@ -1,3 +1,15 @@
+Phase 3: The Fix Implementation
+We will modify TextExpander.ts to handle both issues.
+Files to Modify:
+src/content/components/TextExpander.ts
+Tasks
+Update src/content/components/TextExpander.ts
+Replace the entire file with this version.
+Key Changes:
+Added handleKeyUp: Captures and kills Enter events to prevent NotebookLM submission.
+Refactored replaceText: Moves execCommand('insertText') to the top. It attempts this first for everything. This solves the ChatGPT issue because it runs synchronously on the main thread while the User Token is active.
+code
+TypeScript
 // src/content/components/TextExpander.ts
 import { Store, Prompt } from '../store';
 import { CaretLocator } from '../utils/CaretLocator';

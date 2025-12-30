@@ -8,6 +8,7 @@ import { ControlPanel } from './ControlPanel'; // Import
 // --- CONFIGURATION ---
 const TIPS = [
     "Type `../` followed by Space in any text box to open the Quick Menu.",
+    "To add te tool to any site, just click Alt + P",
     "Pin your prompts to access them in Quick Menu.",
     "Right-click text -> right-click -> save to drawer",
     "Export your data regularly to keep a safe backup.",
