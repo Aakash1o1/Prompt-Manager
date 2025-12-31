@@ -13,7 +13,7 @@ export async function renderUI(opts: {
   SETTINGS_KEY: string;
   TAGS_KEY: string;
   FOLDERS_KEY: string;
-}) {
+}): Promise<any> {
   const { host, shadow, prompts, tags, folders, settings } = opts;
 
   if (!host || !shadow) return;
@@ -51,4 +51,5 @@ export async function renderUI(opts: {
   });
 
   console.log('Prompt Manager UI initialized (V2 Architecture)');
+  return app;
 }

@@ -781,4 +781,111 @@ input:checked + .toggle-switch::after { transform: translateX(20px); }
   margin-bottom: 8px;
   text-transform: uppercase;
 }
+
+@keyframes pulse-yellow {
+    0% { box-shadow: 0 0 0 0 rgba(242, 204, 96, 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(242, 204, 96, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(242, 204, 96, 0); }
+}
+
+.tutorial-highlight {
+    outline: 2px solid #f2cc60 !important;
+    outline-offset: 2px;
+    animation: pulse-yellow 2s infinite !important;
+    z-index: 999999 !important; /* Ensure it stays above everything */
+}
+
+/* Specific fix for inputs where box-shadow might be clipped */
+input.tutorial-highlight, textarea.tutorial-highlight, [contenteditable].tutorial-highlight {
+    border-color: #f2cc60 !important;
+}
+
+/* --- TUTORIAL LAYOUT --- */
+.tutorial-grid {
+    display: grid;
+    grid-template-columns: 200px 300px 1fr;
+    height: 100vh;
+    width: 100vw;
+    background: #0f1117;
+    color: white;
+}
+
+.panel-nav { background: #101012; border-right: 1px solid #21262d; padding: 20px; }
+.panel-instr { background: #161b22; border-right: 1px solid #21262d; padding: 20px; display: flex; flex-direction: column; gap: 15px; color: white; }
+.panel-demo { display: flex; flex-direction: column; background: #0f1117; position: relative; }
+
+/* Panel 1: Modules */
+.mod-btn {
+    width: 100%; text-align: left; padding: 12px; margin-bottom: 8px;
+    background: transparent; border: 1px solid #30363d;
+    color: #8b949e; border-radius: 8px; cursor: pointer; font-size: 13px;
+    font-weight: 600;
+}
+.mod-btn.active { background: #2f81f7; color: white; border-color: #2f81f7; }
+
+/* Panel 2: Instructions */
+.step-item { border-radius: 8px; overflow: hidden; border: 1px solid #30363d; opacity: 0.5; transition: opacity 0.3s; }
+.step-item.active { opacity: 1; border-color: #e3b341; }
+.step-item.completed { opacity: 0.8; border-color: #238636; }
+
+.step-header { 
+    padding: 12px; font-weight: 600; font-size: 13px; display: flex; gap: 10px; align-items: center;
+}
+.step-item.active .step-header { background: #e3b341; color: #000; }
+.step-item.completed .step-header { background: #238636; color: white; }
+
+.step-content { padding: 12px; font-size: 12px; line-height: 1.5; color: #ffffff; background: #0d1117; }
+
+/* Panel 3: Demo Area */
+#demo-stage { flex: 1; padding: 40px; display: flex; flex-direction: column; justify-content: flex-end; gap: 15px; overflow-y: auto; }
+.chat-bubble { padding: 12px 16px; border-radius: 12px; max-width: 70%; font-size: 14px; line-height: 1.4; }
+.chat-bubble.bot { background: #161b22; border: 1px solid #30363d; align-self: flex-start; color: #c9d1d9; }
+
+.demo-input-area { padding: 20px 40px 40px 40px; border-top: 1px solid #21262d; }
+#mock-chat-input {
+    background: #0d1117; border: 2px solid #30363d; padding: 16px; border-radius: 12px;
+    color: white; outline: none; min-height: 20px; font-size: 15px; transition: border-color 0.2s;
+}
+#mock-chat-input:focus { border-color: #2f81f7; box-shadow: 0 0 0 4px rgba(47, 129, 247, 0.1); }
+#mock-chat-input[contenteditable]:empty:before { content: "Type a shortcut here..."; color: #484f58; }
+
+/* Tutorial Page Override: Fix positioning and remove blur */
+:host([data-mode="tutorial"]) {
+    --modal-width: 650px; /* Reduced from 800px */
+    --modal-height: 500px; /* Reduced from 600px */
+}
+
+:host([data-mode="tutorial"]) .backdrop {
+    justify-content: flex-end !important;
+    padding-right: 20px;
+    background: transparent !important; /* Fully transparent backdrop */
+    backdrop-filter: none !important;
+    pointer-events: none !important; 
+    visibility: hidden; /* Completely hide from accessibility/interaction */
+}
+
+/* When open, backdrop allows clicking to close, but we use 'modal' for interaction */
+:host([data-mode="tutorial"]) .backdrop.open {
+    pointer-events: auto !important;
+    visibility: visible;
+}
+
+:host([data-mode="tutorial"]) .modal {
+    /* CRITICAL: Modal must not capture events unless its parent is open */
+    pointer-events: none; 
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    margin-right: 0;
+}
+
+:host([data-mode="tutorial"]) .backdrop.open .modal {
+    pointer-events: auto;
+}
+
+/* Tutorial Page Navigation Collapse */
+.panel-nav.collapsed {
+    width: 60px !important;
+    padding: 24px 8px !important;
+}
+.panel-nav.collapsed .mod-btn span { display: none; }
+.panel-nav.collapsed h3, .panel-nav.collapsed div { display: none; }
 `;

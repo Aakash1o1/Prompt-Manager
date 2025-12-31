@@ -49,6 +49,13 @@ export class Sidebar extends Component {
         this.targetFolderId = p ? (p.parentId || null) : null;
         this.container?.classList.add('mode-move');
         this.container?.classList.remove('mode-export', 'mode-import');
+        this.shadow.dispatchEvent(new CustomEvent('sidebar-mode-move-started'));
+        
+        // SIGNAL: Notify tutorial
+        window.dispatchEvent(new CustomEvent('tutorial-signal', { 
+            detail: { type: 'sidebar-mode-move-started' } 
+        }));
+
         this.renderSkeleton();
         this.setupListeners();
         this.renderTree();
@@ -173,6 +180,7 @@ export class Sidebar extends Component {
             if (this.mode === 'move' && this.movingPromptId) {
                 await this.store.updatePrompt(this.movingPromptId, { parentId: this.targetFolderId });
                 this.shadow.dispatchEvent(new CustomEvent('show-toast', { detail: { message: 'Moved' } }));
+                this.shadow.dispatchEvent(new CustomEvent('app-tutorial-prompt-moved'));
                 this.shadow.dispatchEvent(new CustomEvent('app-mode-cancel'));
             } else if (this.mode === 'export') {
                 this.shadow.dispatchEvent(new CustomEvent('app-exec-export'));
@@ -610,7 +618,10 @@ export class Sidebar extends Component {
         };
 
         menu.appendChild(createItem(isPinned ? 'Unpin' : 'Pin', async () => {
-            try { await this.store.togglePin(promptId); } catch(err: any) {
+            try { 
+                await this.store.togglePin(promptId); 
+                this.shadow.dispatchEvent(new CustomEvent('app-tutorial-pin-toggled'));
+            } catch(err: any) {
                 this.shadow.dispatchEvent(new CustomEvent('show-toast', { detail: { message: err.message } }));
             }
         }));

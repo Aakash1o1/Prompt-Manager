@@ -67,18 +67,31 @@ export class App extends Component {
     public open() {
         this.backdrop?.classList.add('open');
         this.host.style.pointerEvents = 'auto'; // Enable interaction
+
+        // SIGNAL: Notify the window that the drawer is now visible
+        window.dispatchEvent(new CustomEvent('tutorial-signal', { 
+            detail: { type: 'DRAWER_OPENED' } 
+        }));
     }
 
     public close() {
         this.backdrop?.classList.remove('open');
-        this.host.style.pointerEvents = 'none'; // Pass-through interaction
+        // FIX: Specifically set host to none to allow clicking through to tutorial page
+        this.host.style.pointerEvents = 'none'; 
         
-        // Future: Reset router state if needed
+        // SIGNAL: Notify tutorial that drawer closed
+        window.dispatchEvent(new CustomEvent('tutorial-signal', { 
+            detail: { type: 'DRAWER_CLOSED' } 
+        }));
     }
 
     public openWithText(text: string) {
         this.open();
         this.workspace.openEditor(null, null, text);
+        
+        window.dispatchEvent(new CustomEvent('tutorial-signal', { 
+            detail: { type: 'workspace-open-editor', payload: { text } } 
+        }));
     }
 
     public destroy() {
@@ -226,6 +239,64 @@ export class App extends Component {
             this.showToast("Import Successful");
             this.sidebar.setNormalMode();
             this.workspace.mount(this.modal as HTMLElement);
+        });
+
+        // --- TUTORIAL RELAY: Catch internal shadow events and forward to window ---
+        const eventsToForward = [
+            'workspace-open-folder-editor', 
+            'workspace-open-editor', 
+            'app-tutorial-folder-saved',
+            'app-tutorial-prompt-saved',
+            'app-tutorial-pin-toggled',
+            'sidebar-mode-move-started',
+            'app-tutorial-prompt-moved',
+            'app-start-export', 
+            'app-exec-export', 
+            'app-start-import', 
+            'app-exec-import'
+        ];
+
+        eventsToForward.forEach(eventName => {
+            this.shadow.addEventListener(eventName, (e: any) => {
+                window.dispatchEvent(new CustomEvent('tutorial-signal', { 
+                    detail: { 
+                        type: eventName, 
+                        payload: e.detail || {} // Standardize to 'payload'
+                    } 
+                }));
+            });
+        });
+
+        // HIGHLIGHT HANDLER: Find and pulse UI elements
+        window.addEventListener('tutorial-highlight-request', (e: any) => {
+            const selectors: string[] = Array.isArray(e.detail.selector) 
+                ? e.detail.selector 
+                : [e.detail.selector].filter(Boolean);
+            
+            // 1. Clear ALL existing highlights
+            this.shadow.querySelectorAll('.tutorial-highlight').forEach(el => el.classList.remove('tutorial-highlight'));
+
+            // 2. Apply new highlights
+            const apply = () => {
+                selectors.forEach(selector => {
+                    const targets = this.shadow.querySelectorAll(selector);
+                    targets.forEach(target => {
+                        target.classList.add('tutorial-highlight');
+                    });
+                });
+            };
+
+            apply();
+
+            // 3. DYNAMIC OBSERVER: If the target doesn't exist yet (like a context menu),
+            // we watch the DOM for a few seconds to see if it appears.
+            const observer = new MutationObserver(() => {
+                apply();
+            });
+
+            observer.observe(this.shadow, { childList: true, subtree: true });
+            // Stop observing after 5 seconds to save performance
+            setTimeout(() => observer.disconnect(), 5000);
         });
     }
 

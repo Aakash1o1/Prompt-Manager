@@ -600,6 +600,11 @@ export class Store {
         };
         this.folders.push(newFolder);
         await this.saveFolders();
+
+        // SIGNAL: For tutorial validation
+        window.dispatchEvent(new CustomEvent('tutorial-signal', { 
+            detail: { type: 'app-tutorial-folder-saved', payload: { parentId } } 
+        }));
     }
 
     async updateFolder(id: string, updates: Partial<Folder>) {
@@ -682,6 +687,11 @@ export class Store {
         }
 
         await this.savePrompts();
+
+        // SIGNAL: Notify tutorial
+        window.dispatchEvent(new CustomEvent('tutorial-signal', { 
+            detail: { type: 'app-tutorial-pin-toggled' } 
+        }));
     }
 
     /**
@@ -728,6 +738,11 @@ export class Store {
         };
         this.prompts.push(newPrompt);
         await this.savePrompts();
+
+        // SIGNAL: For tutorial validation
+        window.dispatchEvent(new CustomEvent('tutorial-signal', { 
+            detail: { type: 'app-tutorial-prompt-saved', payload: { parentId } } 
+        }));
     }
 
     async updatePrompt(id: string, updates: Partial<Prompt>) {
@@ -749,6 +764,12 @@ export class Store {
 
         this.prompts[idx] = { ...this.prompts[idx], ...updates };
         await this.savePrompts();
+
+        if (updates.parentId !== undefined) {
+            window.dispatchEvent(new CustomEvent('tutorial-signal', { 
+                detail: { type: 'app-tutorial-prompt-moved', payload: { parentId: updates.parentId } } 
+            }));
+        }
     }
 
     async deletePrompt(id: string) {

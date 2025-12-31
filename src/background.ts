@@ -139,6 +139,16 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
     return;
   }
 
+  // NEW: Detect if we are on an internal extension page (like tutorial.html)
+  if (tab.url.startsWith('chrome-extension://')) {
+    chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_POPUP' }, () => {
+      if (chrome.runtime.lastError) {
+        console.warn("Toggle failed on internal page.");
+      }
+    });
+    return;
+  }
+
   let originPattern: string;
   try {
     // Create the origin pattern (e.g., "https://www.google.com/*")
@@ -223,6 +233,15 @@ chrome.runtime.onInstalled.addListener(() => {
 // Handle context menu clicks
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'save-prompt' && tab?.id) {
+    // Detect if we are on an internal extension page
+    if (tab.url?.startsWith('chrome-extension://')) {
+      chrome.tabs.sendMessage(tab.id, {
+        type: 'OPEN_WITH_TEXT',
+        text: info.selectionText || ''
+      });
+      return;
+    }
+
     // Instead of using info.selectionText (which may lose formatting),
     // execute a script in the page to get the actual selection
     chrome.scripting.executeScript({

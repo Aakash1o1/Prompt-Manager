@@ -16,7 +16,8 @@
     "build:background": "esbuild src/background.ts --bundle --platform=browser --outfile=dist/background.js",
     "build:options": "esbuild src/options.ts --bundle --platform=browser --outfile=dist/options.js && cpx \"src/options.html\" dist",
     "build:action": "esbuild src/action.ts --bundle --platform=browser --outfile=dist/action.js && cpx \"src/action.html\" dist",
-    "build:all": "npm run build:content && npm run build:background && npm run build:options && npm run build:action",
+    "build:tutorial": "esbuild src/tutorial.ts --bundle --platform=browser --outfile=dist/tutorial.js && cpx \"src/tutorial.html\" dist",
+    "build:all": "npm run build:content && npm run build:background && npm run build:options && npm run build:action && npm run build:tutorial",
     "build": "npm run clean && npm run build:all"
   },
   "dependencies": {

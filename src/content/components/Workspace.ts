@@ -337,6 +337,10 @@ export class Workspace extends Component {
             this.isDirty = false;
             // Stay in editor, but update original ID if it was new (so next save is update)
             if (!this.originalPromptId) {
+                // SIGNAL: Notification for tutorial engine
+                this.shadow.dispatchEvent(new CustomEvent('app-tutorial-prompt-saved', { 
+                    detail: { promptId: this.originalPromptId || null } // Fallback if just added
+                }));
                 this.renderEmpty(); 
             }
         } catch (e: any) {
@@ -358,6 +362,7 @@ export class Workspace extends Component {
                 await this.store.addFolder(name, this.draftFolder.parentId);
             }
             this.shadow.dispatchEvent(new CustomEvent('show-toast', { detail: { message: 'Saved' } }));
+            this.shadow.dispatchEvent(new CustomEvent('app-tutorial-folder-saved'));
             this.isDirty = false;
             this.renderEmpty();
         } catch (e: any) {
@@ -466,6 +471,13 @@ export class Workspace extends Component {
 
             quickInp.className = `ws-input ${quickMatch ? 'error' : (prompt.quick ? 'success' : '')}`;
             errQuick.style.display = quickMatch ? 'block' : 'none';
+
+            // SIGNAL: Notify tutorial if the conflict is cleared
+            if (!titleMatch && !quickMatch) {
+                window.dispatchEvent(new CustomEvent('tutorial-signal', { 
+                    detail: { type: 'app-tutorial-conflict-resolved' } 
+                }));
+            }
 
             onUpdate(prompt);
         };

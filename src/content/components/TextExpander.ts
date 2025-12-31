@@ -244,6 +244,18 @@ export class TextExpander {
                 if (strategy === 'MANUAL' || this.verifyInsertion(el, replacement)) {
                     console.log(`[PD] Strategy ${strategy} Succeeded`);
                     this.triggerEvents(el);
+
+                    // SIGNAL: Notify the window that a shortcut was expanded
+                    window.dispatchEvent(new CustomEvent('tutorial-signal', { 
+                        detail: { 
+                            type: 'SHORTCUT_EXPANDED',
+                            payload: { 
+                                text: replacement,
+                                trigger: target // This will be '.shortcut' or '../'
+                            } 
+                        } 
+                    }));
+
                     return; // EXIT
                 }
             }
