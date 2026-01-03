@@ -630,6 +630,11 @@ export class Sidebar extends Component {
             if (p) {
                 navigator.clipboard.writeText(p.text);
                 this.shadow.dispatchEvent(new CustomEvent('show-toast', { detail: { message: 'Copied' } }));
+                
+                // NEW: SIGNAL FOR TUTORIAL
+                window.dispatchEvent(new CustomEvent('tutorial-signal', { 
+                    detail: { type: 'app-tutorial-copy' } 
+                }));
             }
         }));
         menu.appendChild(createItem('Move To...', () => this.startMoveMode(promptId)));

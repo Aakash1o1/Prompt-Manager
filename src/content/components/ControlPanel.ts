@@ -15,8 +15,11 @@ export class ControlPanel extends Component {
         const s = this.store.settings;
 
         this.container.innerHTML = `
-            <div class="ws-header">
-                <h2 style="margin:0; font-size:18px;">Control Panel</h2>
+            <div class="ws-header" style="flex-direction: row; justify-content: space-between; align-items: center;">
+                <h2 style="margin:0; font-size:18px;color:white;">Control Panel</h2>
+                <button class="btn-tutorial" id="cp-tutorial-btn">
+                    <span>✨</span> Tutorial
+                </button>
             </div>
             
             <div class="cp-container">
@@ -65,11 +68,11 @@ export class ControlPanel extends Component {
                     <div class="backup-grid">
                         <div class="backup-card" id="cp-export">
                             <div class="backup-icon">📤</div>
-                            <div class="backup-title">Export Data</div>
+                            <div class="backup-title" style="color:white;">Export Data</div>
                         </div>
                         <div class="backup-card" id="cp-import">
                             <div class="backup-icon">📥</div>
-                            <div class="backup-title">Import Data</div>
+                            <div class="backup-title" style="color:white;">Import Data</div>
                         </div>
                     </div>
                     <input type="file" id="cp-file-input" accept=".json" style="display:none;" />
@@ -82,6 +85,12 @@ export class ControlPanel extends Component {
     }
 
     private setupListeners() {
+        // Tutorial Button
+        this.container?.querySelector('#cp-tutorial-btn')?.addEventListener('click', () => {
+             // Tell the background script to open the tutorial tab
+             chrome.runtime.sendMessage({ type: 'OPEN_TUTORIAL' });
+        });
+
         // Theme
         this.container?.querySelector('#cp-theme')?.addEventListener('change', (e) => {
             const checkbox = e.target as HTMLInputElement;

@@ -800,6 +800,37 @@ input.tutorial-highlight, textarea.tutorial-highlight, [contenteditable].tutoria
     border-color: #f2cc60 !important;
 }
 
+@keyframes glitter {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+.btn-tutorial {
+    background: linear-gradient(45deg, #f2cc60, #ffffff, #f2cc60, #ff9a3d);
+    background-size: 300% 300%;
+    animation: glitter 3s ease infinite;
+    color: #000 !important;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    box-shadow: 0 0 10px rgba(242, 204, 96, 0.4);
+    transition: transform 0.2s;
+    border: 1px solid rgba(0,0,0,0.1);
+}
+
+.btn-tutorial:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 15px rgba(242, 204, 96, 0.6);
+}}
+
 /* --- TUTORIAL LAYOUT --- */
 .tutorial-grid {
     display: grid;
@@ -851,34 +882,44 @@ input.tutorial-highlight, textarea.tutorial-highlight, [contenteditable].tutoria
 
 /* Tutorial Page Override: Fix positioning and remove blur */
 :host([data-mode="tutorial"]) {
-    --modal-width: 650px; /* Reduced from 800px */
-    --modal-height: 500px; /* Reduced from 600px */
+    --modal-width: 850px; /* Reduced from 800px */
+    --modal-height: 550px; /* Reduced from 600px */
 }
 
 :host([data-mode="tutorial"]) .backdrop {
-    justify-content: flex-end !important;
-    padding-right: 20px;
-    background: transparent !important; /* Fully transparent backdrop */
+    /* 1. Full Screen Coverage */
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    left: 0 !important;
+    top: 0 !important;
+    
+    /* 2. Total Transparency (Instructions remain visible) */
+    background: transparent !important;
     backdrop-filter: none !important;
-    pointer-events: none !important; 
-    visibility: hidden; /* Completely hide from accessibility/interaction */
+    
+    /* 3. Invisible when closed */
+    pointer-events: none;
+    display: flex;
+    justify-content: flex-end; /* Keep modal on the right */
+    align-items: center;
+    visibility: hidden;
+    opacity: 0;
 }
 
-/* When open, backdrop allows clicking to close, but we use 'modal' for interaction */
 :host([data-mode="tutorial"]) .backdrop.open {
+    /* 4. Active when open: Catch clicks everywhere to trigger close */
     pointer-events: auto !important;
     visibility: visible;
+    opacity: 1;
 }
 
 :host([data-mode="tutorial"]) .modal {
-    /* CRITICAL: Modal must not capture events unless its parent is open */
-    pointer-events: none; 
-    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-    margin-right: 0;
-}
-
-:host([data-mode="tutorial"]) .backdrop.open .modal {
-    pointer-events: auto;
+    /* 5. The actual drawer box stays on the right */
+    margin-right: 20px;
+    pointer-events: auto; /* Clicks inside the drawer work normally */
+    box-shadow: 0 10px 50px rgba(0,0,0,0.5); /* Stronger shadow since background is clear */
 }
 
 /* Tutorial Page Navigation Collapse */

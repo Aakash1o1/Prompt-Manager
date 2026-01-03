@@ -245,6 +245,8 @@ export class App extends Component {
         const eventsToForward = [
             'workspace-open-folder-editor', 
             'workspace-open-editor', 
+            'workspace-new-prompt', // ADD THIS
+            'workspace-settings',   // ADD THIS
             'app-tutorial-folder-saved',
             'app-tutorial-prompt-saved',
             'app-tutorial-pin-toggled',

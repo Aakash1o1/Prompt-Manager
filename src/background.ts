@@ -59,6 +59,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const tabId = msg.tabId as number;
     injectIntoTab(tabId).then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
     return true;
+  } else if (msg?.type === 'OPEN_TUTORIAL') {
+    chrome.tabs.create({ url: chrome.runtime.getURL('dist/tutorial.html') });
+    sendResponse({ ok: true });
+    return true;
   }
 });
 
@@ -212,7 +216,14 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 
 // On install/startup, attempt to inject into open tabs for stored hosts if permission still present
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener((details) => {
+  // NEW: Open Tutorial on Install
+  if (details.reason === 'install') {
+      chrome.tabs.create({
+          url: chrome.runtime.getURL('dist/tutorial.html')
+      });
+  }
+
   // === REPLACE THE LOGIC WITH THIS SIMPLER VERSION ===
   chrome.permissions.getAll(permissions => {
     if (permissions.origins) {
@@ -285,10 +296,25 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 
 // When permissions are added (anywhere), attempt to install content script for those origins
-chrome.permissions.onAdded.addListener((perms) => {
+chrome.permissions.onAdded.addListener(async (perms) => {
   if (!perms || !perms.origins) return;
+  
   for (const originPattern of perms.origins) {
     onPermissionGrantedForPattern(originPattern).catch((e) => console.error('onAdded handler failed', e));
+
+    // RELIABLE SEARCH: Find all tabs belonging to this extension
+    const tabs = await chrome.tabs.query({}); 
+    const extensionId = chrome.runtime.id;
+
+    for (const t of tabs) {
+        // Send to any tab that looks like our tutorial page
+        if (t.id && t.url?.includes(extensionId) && t.url?.includes('tutorial.html')) {
+            chrome.tabs.sendMessage(t.id, { 
+                type: 'TUTORIAL_EXTERNAL_SIGNAL', 
+                detail: { type: 'PERMISSION_GRANTED', payload: { origin: originPattern } } 
+            }).catch(() => {}); // Ignore errors for closed tabs
+        }
+    }
   }
 });
 

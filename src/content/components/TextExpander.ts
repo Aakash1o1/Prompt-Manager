@@ -10,7 +10,7 @@ type InsertionStrategy = 'NATIVE' | 'SYNC_CLIPBOARD' | 'ASYNC_CLIPBOARD' | 'MANU
 // Site-specific preferences based on known constraints
 const SITE_CONFIG: Record<string, InsertionStrategy[]> = {
     // ChatGPT blocks Async Clipboard (User Token expires). Needs Sync.
-    'chatgpt.com': ['NATIVE', 'SYNC_CLIPBOARD', 'MANUAL'],
+    'chatgpt.com': ['MANUAL', 'SYNC_CLIPBOARD', 'NATIVE'],
     'openai.com': ['NATIVE', 'SYNC_CLIPBOARD', 'MANUAL'],
 
     // Claude/Gemini handle Async Clipboard well, but Sync stealing focus confuses them.
